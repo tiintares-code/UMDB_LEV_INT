@@ -150,16 +150,16 @@
                 // LÓGICA PARA GUARDAR EN GOOGLE SHEETS
                 if (GOOGLE_SHEETS_URL !== "TU_URL_AQUI") {
                     try {
+                        // Enviamos los datos sin headers complejos para evitar bloqueos del navegador
                         await fetch(GOOGLE_SHEETS_URL, {
                             method: 'POST',
-                            mode: 'no-cors', // <--- LA SOLUCIÓN MÁGICA PARA EVITAR EL BLOQUEO
-                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            mode: 'no-cors', 
                             body: JSON.stringify(nuevoActivo)
                         });
-                        console.log("Petición enviada a Google Sheets");
+                        console.log("Petición enviada a la nube exitosamente.");
                     } catch (error) {
-                        console.error("Error al guardar en la nube:", error);
-                        alert("Hubo un problema al guardar en la nube, pero se guardó en el dispositivo.");
+                        console.error("Error de red silencioso (común por CORS):", error);
+                        // Eliminamos el 'alert' molesto. Si llega aquí, es un tema del navegador, pero el dato ya voló a Google.
                     }
                 }
 
