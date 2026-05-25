@@ -37,8 +37,14 @@
             const [activos, setActivos] = useState([]);
             const [contadorActas, setContadorActas] = useState(0);
             const [empleadosRecientes, setEmpleadosRecientes] = useState([]);
+            const [guardando, setGuardando] = useState(false); // Nuevo estado para mostrar que está guardando
 
             const LOGO_URL = "https://ui-avatars.com/api/?name=Activos+Fijos&background=0D8ABC&color=fff&size=128&rounded=true&font-size=0.33";
+            
+            // ====================================================================
+            // AQUÍ PEGARÁS LA URL DE TU GOOGLE SHEET (Lo haremos en el Paso 2)
+            // ====================================================================
+            const GOOGLE_SHEETS_URL = "TU_URL_AQUI"; 
 
             const [formData, setFormData] = useState({
                 nombre: '',
@@ -118,8 +124,9 @@
                 });
             };
 
-            const handleSubmit = (e) => {
+            const handleSubmit = async (e) => {
                 e.preventDefault();
+                setGuardando(true); // Mostramos el indicador de carga
                 
                 const fechaHoraActual = new Date().toLocaleString('es-BO', {
                     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -139,6 +146,22 @@
                     fechaHoraRegistro: fechaHoraActual,
                     descripcionRiesgo: descripcionesRiesgo
                 };
+
+                // LÓGICA PARA GUARDAR EN GOOGLE SHEETS
+                if (GOOGLE_SHEETS_URL !== "TU_URL_AQUI") {
+                    try {
+                        await fetch(GOOGLE_SHEETS_URL, {
+                            method: 'POST',
+                            // Usamos text/plain para evitar errores de CORS en el navegador
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(nuevoActivo)
+                        });
+                        console.log("Guardado en Google Sheets exitoso");
+                    } catch (error) {
+                        console.error("Error al guardar en la nube:", error);
+                        alert("Hubo un problema al guardar en la nube, pero se guardó en el dispositivo.");
+                    }
+                }
 
                 setActivos([nuevoActivo, ...activos]);
                 setContadorActas(contadorActas + 1);
@@ -166,6 +189,7 @@
                 });
                 
                 if (fileInputRef.current) fileInputRef.current.value = '';
+                setGuardando(false); // Ocultamos el indicador de carga
             };
 
             const exportToCSV = () => {
@@ -353,9 +377,12 @@
                                             </div>
 
                                             <div className="pt-4 mt-2 border-t border-slate-100">
-                                                <button type="submit" className="w-full flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg text-sm font-bold transition-colors shadow-md">
-                                                    <i className="fa-solid fa-floppy-disk"></i>
-                                                    Guardar y Añadir al Lote
+                                                <button type="submit" disabled={guardando} className={`w-full flex justify-center items-center gap-2 text-white px-4 py-3 rounded-lg text-sm font-bold transition-colors shadow-md ${guardando ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                                                    {guardando ? (
+                                                        <><i className="fa-solid fa-spinner fa-spin"></i> Guardando en Nube...</>
+                                                    ) : (
+                                                        <><i className="fa-solid fa-floppy-disk"></i> Guardar y Añadir al Lote</>
+                                                    )}
                                                 </button>
                                             </div>
                                         </div>
