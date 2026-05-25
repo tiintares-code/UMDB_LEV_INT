@@ -152,11 +152,11 @@
                     try {
                         await fetch(GOOGLE_SHEETS_URL, {
                             method: 'POST',
-                            // Usamos text/plain para evitar errores de CORS en el navegador
+                            mode: 'no-cors', // <--- LA SOLUCIÓN MÁGICA PARA EVITAR EL BLOQUEO
                             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                             body: JSON.stringify(nuevoActivo)
                         });
-                        console.log("Guardado en Google Sheets exitoso");
+                        console.log("Petición enviada a Google Sheets");
                     } catch (error) {
                         console.error("Error al guardar en la nube:", error);
                         alert("Hubo un problema al guardar en la nube, pero se guardó en el dispositivo.");
