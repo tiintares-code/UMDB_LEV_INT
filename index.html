@@ -125,6 +125,31 @@
                 });
             };
 
+            // NUEVA FUNCIÓN: ELIMINAR ACTIVO (Local y en la Nube)
+            const eliminarActivo = async (id, numeroActaAux) => {
+                if(!window.confirm(`¿Estás seguro de eliminar el registro ${numeroActaAux}?`)) return;
+                
+                // 1. Eliminar de la vista local
+                setActivos(activos.filter(a => a.id !== id));
+                // No restamos el contador de actas para no repetir códigos, es mejor que queden saltados.
+
+                // 2. Eliminar de la nube (SheetDB) buscando por la columna "Acta"
+                if (SHEETDB_URL !== "TU_URL_DE_SHEETDB_AQUI") {
+                    try {
+                        await fetch(`${SHEETDB_URL}/Acta/${numeroActaAux}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        console.log("Registro eliminado de la nube");
+                    } catch (error) {
+                        console.error("Error al eliminar en la nube:", error);
+                    }
+                }
+            };
+
             const handleSubmit = async (e) => {
                 e.preventDefault();
                 setGuardando(true); // Mostramos el indicador de carga
@@ -309,32 +334,32 @@
                                         </h2>
                                         <div className="space-y-3">
                                             <div>
-                                                <label className="block text-xs font-semibold text-slate-600 mb-1">Nombre Completo</label>
-                                                <input required type="text" name="nombre" value={formData.nombre} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                                <label className="block text-xs font-semibold text-slate-600 mb-1">Nombre Completo *</label>
+                                                <input required type="text" name="nombre" value={formData.nombre} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Obligatorio" />
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div>
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">C.I.</label>
-                                                    <input required type="text" name="ci" value={formData.ci} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">C.I. (Opcional)</label>
+                                                    <input type="text" name="ci" value={formData.ci} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                                                 </div>
                                                 <div>
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Nº Acta Aux.</label>
-                                                    <input type="text" name="numeroActaAux" value={formData.numeroActaAux} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Opcional" />
+                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Nº Acta Aux. (Opcional)</label>
+                                                    <input type="text" name="numeroActaAux" value={formData.numeroActaAux} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Auto-generado" />
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div>
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Cargo General</label>
-                                                    <input required type="text" name="cargo" value={formData.cargo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Cargo Gral. (Opcional)</label>
+                                                    <input type="text" name="cargo" value={formData.cargo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                                                 </div>
                                                 <div>
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Cargo Específico</label>
+                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Específico (Opcional)</label>
                                                     <input type="text" name="cargoEspecifico" value={formData.cargoEspecifico} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-semibold text-slate-600 mb-1">Ubicación / Área</label>
-                                                <input required type="text" name="ubicacionFuncionario" value={formData.ubicacionFuncionario} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                                <label className="block text-xs font-semibold text-slate-600 mb-1">Ubicación / Área (Opcional)</label>
+                                                <input type="text" name="ubicacionFuncionario" value={formData.ubicacionFuncionario} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                                             </div>
                                         </div>
                                     </div>
@@ -374,11 +399,11 @@
 
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div className="col-span-2 md:col-span-1">
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Código (Si tiene)</label>
+                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Código (Opcional)</label>
                                                     <input type="text" name="codigoActivo" value={formData.codigoActivo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="AF-12345 o S/C" />
                                                 </div>
                                                 <div className="col-span-2 md:col-span-1">
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Foto (Evidencia)</label>
+                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Foto (Opcional)</label>
                                                     <div className="flex items-center gap-2">
                                                         <button type="button" onClick={() => fileInputRef.current.click()} className="flex-1 flex justify-center items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-md text-sm font-medium transition-colors">
                                                             <i className="fa-solid fa-camera"></i> Cámara
@@ -388,12 +413,12 @@
                                                     {formData.fotoNombre && <p className="text-[10px] text-emerald-600 mt-1 font-bold truncate">✓ {formData.fotoNombre}</p>}
                                                 </div>
                                                 <div className="col-span-2">
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Descripción del Activo</label>
-                                                    <textarea required name="descripcionActivo" value={formData.descripcionActivo} onChange={handleInputChange} rows="2" className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Tipo, Marca, Modelo, Serie..."></textarea>
+                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Descripción del Activo (Opcional)</label>
+                                                    <textarea name="descripcionActivo" value={formData.descripcionActivo} onChange={handleInputChange} rows="2" className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Tipo, Marca, Modelo, Serie..."></textarea>
                                                 </div>
                                                 <div className="col-span-2">
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Ubicación Física Específica</label>
-                                                    <input required type="text" name="ubicacionActivo" value={formData.ubicacionActivo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ej. Escritorio izquierdo" />
+                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Ubicación Física Específica (Opcional)</label>
+                                                    <input type="text" name="ubicacionActivo" value={formData.ubicacionActivo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ej. Escritorio izquierdo" />
                                                 </div>
                                             </div>
 
@@ -441,9 +466,18 @@
                                                                 );
                                                             })}
                                                         </div>
-                                                        <span className="bg-slate-800 text-white px-2 py-1 rounded text-xs font-bold font-mono shadow-sm">
-                                                            {activo.numeroActaAux}
-                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="bg-slate-800 text-white px-2 py-1 rounded text-xs font-bold font-mono shadow-sm">
+                                                                {activo.numeroActaAux}
+                                                            </span>
+                                                            <button 
+                                                                onClick={() => eliminarActivo(activo.id, activo.numeroActaAux)}
+                                                                className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded transition-colors"
+                                                                title="Eliminar este registro"
+                                                            >
+                                                                <i className="fa-solid fa-trash-can text-sm"></i>
+                                                            </button>
+                                                        </div>
                                                     </div>
 
                                                     <div className="flex justify-between items-start">
