@@ -39,12 +39,13 @@
             const [empleadosRecientes, setEmpleadosRecientes] = useState([]);
             const [guardando, setGuardando] = useState(false); // Nuevo estado para mostrar que está guardando
 
-            const LOGO_URL = "https://script.google.com/macros/s/AKfycbz-HaZLVyCAzNj80NHWA_MEMXi4gt3ZN2bkUYKgrPPYNdPBgVZpsYLfqQKOQSx0BzjmSA/exec";
+            const LOGO_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQzL0ANgclJcSvKlLJDjeHH-tpIbl9SHI9mXg&s";
             
             // ====================================================================
-            // AQUÍ PEGARÁS LA URL DE TU GOOGLE SHEET (Lo haremos en el Paso 2)
+            // AQUÍ PEGARÁS LA URL DE TU API DE SHEETDB.IO (Opción 2)
+            // Ejemplo: "https://sheetdb.io/api/v1/tu_codigo_aqui"
             // ====================================================================
-            const GOOGLE_SHEETS_URL = "https://script.google.com/macros/s/AKfycbykyeSEw1_r4z6rT4EoAXXVrP9O1ftrcr8ckHW8wDeoxeIsxCRXlb6p8rYLRKwTpEw7Bg/exec"; 
+            const SHEETDB_URL = "https://sheetdb.io/api/v1/ee5clgxt3e5fo"; 
 
             const [formData, setFormData] = useState({
                 nombre: '',
@@ -147,19 +148,39 @@
                     descripcionRiesgo: descripcionesRiesgo
                 };
 
-                // LÓGICA PARA GUARDAR EN GOOGLE SHEETS
-                if (GOOGLE_SHEETS_URL !== "TU_URL_AQUI") {
+                // LÓGICA PARA GUARDAR EN SHEETDB (OPCIÓN 2)
+                if (SHEETDB_URL !== "TU_URL_DE_SHEETDB_AQUI") {
                     try {
-                        // Enviamos los datos sin headers complejos para evitar bloqueos del navegador
-                        await fetch(GOOGLE_SHEETS_URL, {
+                        // Los nombres de la izquierda deben ser EXACTAMENTE iguales a los títulos de tus columnas en el Excel
+                        const payload = {
+                            data: [{
+                                "Acta": nuevoActivo.numeroActaAux,
+                                "Fecha": nuevoActivo.fechaHoraRegistro,
+                                "CI": nuevoActivo.ci,
+                                "Nombre": nuevoActivo.nombre,
+                                "Cargo": `${nuevoActivo.cargo} - ${nuevoActivo.cargoEspecifico}`,
+                                "Ubicacion_Resp": nuevoActivo.ubicacionFuncionario,
+                                "Codigo": nuevoActivo.codigoActivo || 'S/C',
+                                "Descripcion_Activo": nuevoActivo.descripcionActivo,
+                                "Ubicacion_Activo": nuevoActivo.ubicacionActivo,
+                                "Riesgo": nuevoActivo.descripcionRiesgo
+                            }]
+                        };
+
+                        const respuesta = await fetch(SHEETDB_URL, {
                             method: 'POST',
-                            mode: 'no-cors', 
-                            body: JSON.stringify(nuevoActivo)
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(payload)
                         });
-                        console.log("Petición enviada a la nube exitosamente.");
+
+                        if (!respuesta.ok) throw new Error("Fallo al guardar en SheetDB");
+                        console.log("Registro guardado en SheetDB exitosamente.");
                     } catch (error) {
-                        console.error("Error de red silencioso (común por CORS):", error);
-                        // Eliminamos el 'alert' molesto. Si llega aquí, es un tema del navegador, pero el dato ya voló a Google.
+                        console.error("Error de SheetDB:", error);
+                        alert("No se pudo conectar con la nube. Revisa tu conexión.");
                     }
                 }
 
