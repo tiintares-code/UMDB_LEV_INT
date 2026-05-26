@@ -5,88 +5,125 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventario Activos Fijos</title>
     
-    <!-- Tailwind CSS para los estilos -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: {} }
+        }
+    </script>
     
-    <!-- FontAwesome para los íconos (Reemplaza a Lucide para web directa) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- Librerías de React -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
     <style>
-        /* Personalización de la barra de desplazamiento */
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+        
+        /* Filtro especial para el Modo Nocturno (Cuidado Visual) */
+        .theme-night {
+            filter: sepia(0.3) brightness(0.9) contrast(1.05) hue-rotate(-10deg);
+            background-color: #1c1917; /* Fondo cálido oscuro */
+        }
     </style>
 </head>
-<body class="bg-slate-100">
-    
-    <!-- Aquí se inyectará la aplicación -->
+<body class="bg-slate-100 dark:bg-slate-900 transition-colors duration-300">
     <div id="root"></div>
 
-    <!-- Código de la Aplicación -->
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
         function App() {
-            const [activos, setActivos] = useState([]);
-            const [contadorActas, setContadorActas] = useState(0);
-            const [empleadosRecientes, setEmpleadosRecientes] = useState([]);
-            const [guardando, setGuardando] = useState(false); // Nuevo estado para mostrar que está guardando
-
-            const LOGO_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ8psbbvVAn119BrssyE6-zOgkalTo7bB80Dg&s";
-            
-            // ====================================================================
-            // AQUÍ PEGARÁS LA URL DE TU API DE SHEETDB.IO (Opción 2)
-            // Ejemplo: "https://sheetdb.io/api/v1/tu_codigo_aqui"
-            // ====================================================================
-            const SHEETDB_URL = "https://sheetdb.io/api/v1/ebwb7uu4clqiv"; 
-
-            const [formData, setFormData] = useState({
-                nombre: '',
-                ci: '',
-                cargo: '',
-                cargoEspecifico: '',
-                ubicacionFuncionario: '',
-                numeroActaAux: '',
-                estadosRiesgo: ['verde'], 
-                codigoActivo: '',
-                descripcionActivo: '',
-                ubicacionActivo: '',
-                fotoUrl: '',
-                fotoNombre: ''
+            // ==========================================
+            // ESTADO DEL TEMA
+            // ==========================================
+            const [temaActivo, setTemaActivo] = useState(() => {
+                return localStorage.getItem('app_tema') || 'light';
             });
 
-            const fileInputRef = useRef(null);
+            useEffect(() => {
+                localStorage.setItem('app_tema', temaActivo);
+                const html = document.documentElement;
+                const body = document.body;
+                
+                // Limpiar clases previas
+                html.classList.remove('dark');
+                body.classList.remove('theme-night');
 
-            // Mapeo seguro de colores para Tailwind CDN
+                if (temaActivo === 'dark') html.classList.add('dark');
+                if (temaActivo === 'night') {
+                    html.classList.add('dark');
+                    body.classList.add('theme-night');
+                }
+            }, [temaActivo]);
+
+            const cambiarTema = () => {
+                if (temaActivo === 'light') setTemaActivo('dark');
+                else if (temaActivo === 'dark') setTemaActivo('night');
+                else setTemaActivo('light');
+            };
+
+            // MEMORIA LOCAL
+            const [activos, setActivos] = useState(() => { const g = localStorage.getItem('app_activos'); return g ? JSON.parse(g) : []; });
+            const [contadorActas, setContadorActas] = useState(() => { const g = localStorage.getItem('app_contador'); return g ? parseInt(g) : 0; });
+            const [empleadosRecientes, setEmpleadosRecientes] = useState(() => { const g = localStorage.getItem('app_empleados'); return g ? JSON.parse(g) : []; });
+            const [contextoSesion, setContextoSesion] = useState(() => { const g = localStorage.getItem('app_contexto'); return g ? JSON.parse(g) : { ciudad: 'La Paz', gerencia: '' }; });
+
+            useEffect(() => { localStorage.setItem('app_activos', JSON.stringify(activos)); }, [activos]);
+            useEffect(() => { localStorage.setItem('app_contador', contadorActas.toString()); }, [contadorActas]);
+            useEffect(() => { localStorage.setItem('app_empleados', JSON.stringify(empleadosRecientes)); }, [empleadosRecientes]);
+            useEffect(() => { localStorage.setItem('app_contexto', JSON.stringify(contextoSesion)); }, [contextoSesion]);
+
+            const [guardando, setGuardando] = useState(false);
+            const [filtroBusqueda, setFiltroBusqueda] = useState(''); 
+            const [filtroFecha, setFiltroFecha] = useState('');
+            const [paginaActual, setPaginaActual] = useState(1);
+            const itemsPorPagina = 10;
+
+            const LOGO_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQzL0ANgclJcSvKlLJDjeHH-tpIbl9SHI9mXg&s";
+            
+            // ==============================================================
+            // AQUÍ TU URL DE SHEETDB
+            const SHEETDB_URL = "https://sheetdb.io/api/v1/ebwb7uu4clqiv"; 
+            // ==============================================================
+
+            const [formData, setFormData] = useState({
+                nombre: '', ci: '', cargo: '', cargoEspecifico: '', ubicacionFuncionario: '',
+                numeroActaAux: '', estadosRiesgo: ['verde'], codigoActivo: '',
+                descripcionActivo: '', ubicacionActivo: '', 
+                fotoActivoNombre: '', fotoActivoUrl: '', // Foto 1
+                fotoCodigoNombre: '', fotoCodigoUrl: ''  // Foto 2
+            });
+
+            const fileActivoRef = useRef(null);
+            const fileCodigoRef = useRef(null);
+
+            // Colores adaptados para modo oscuro
             const clrs = {
-                red: { bg: 'bg-red-50', border: 'border-red-500', text: 'text-red-500', textDark: 'text-red-800', ring: 'ring-red-500', bgLight: 'bg-red-100' },
-                orange: { bg: 'bg-orange-50', border: 'border-orange-500', text: 'text-orange-500', textDark: 'text-orange-800', ring: 'ring-orange-500', bgLight: 'bg-orange-100' },
-                yellow: { bg: 'bg-yellow-50', border: 'border-yellow-500', text: 'text-yellow-500', textDark: 'text-yellow-800', ring: 'ring-yellow-500', bgLight: 'bg-yellow-100' },
-                purple: { bg: 'bg-purple-50', border: 'border-purple-500', text: 'text-purple-500', textDark: 'text-purple-800', ring: 'ring-purple-500', bgLight: 'bg-purple-100' },
-                blue: { bg: 'bg-blue-50', border: 'border-blue-500', text: 'text-blue-500', textDark: 'text-blue-800', ring: 'ring-blue-500', bgLight: 'bg-blue-100' },
-                green: { bg: 'bg-green-50', border: 'border-green-500', text: 'text-green-500', textDark: 'text-green-800', ring: 'ring-green-500', bgLight: 'bg-green-100' }
+                red: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-500', text: 'text-red-600 dark:text-red-400', textDark: 'text-red-800 dark:text-red-300', ring: 'ring-red-500', bgLight: 'bg-red-100 dark:bg-red-900/40' },
+                orange: { bg: 'bg-orange-50 dark:bg-orange-900/20', border: 'border-orange-500', text: 'text-orange-600 dark:text-orange-400', textDark: 'text-orange-800 dark:text-orange-300', ring: 'ring-orange-500', bgLight: 'bg-orange-100 dark:bg-orange-900/40' },
+                yellow: { bg: 'bg-yellow-50 dark:bg-yellow-900/20', border: 'border-yellow-500', text: 'text-yellow-600 dark:text-yellow-400', textDark: 'text-yellow-800 dark:text-yellow-300', ring: 'ring-yellow-500', bgLight: 'bg-yellow-100 dark:bg-yellow-900/40' },
+                purple: { bg: 'bg-purple-50 dark:bg-purple-900/20', border: 'border-purple-500', text: 'text-purple-600 dark:text-purple-400', textDark: 'text-purple-800 dark:text-purple-300', ring: 'ring-purple-500', bgLight: 'bg-purple-100 dark:bg-purple-900/40' },
+                blue: { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-500', text: 'text-blue-600 dark:text-blue-400', textDark: 'text-blue-800 dark:text-blue-300', ring: 'ring-blue-500', bgLight: 'bg-blue-100 dark:bg-blue-900/40' },
+                green: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-500', text: 'text-green-600 dark:text-green-400', textDark: 'text-green-800 dark:text-green-300', ring: 'ring-green-500', bgLight: 'bg-green-100 dark:bg-green-900/40' }
             };
 
             const opcionesRiesgo = [
-                { id: 'rojo', color: 'red', titulo: 'Sin Código / Sin Sistema', desc: 'Activo sin plaqueta y sin registro web.', iconClass: 'fa-solid fa-circle-exclamation' },
-                { id: 'naranja', color: 'orange', titulo: 'Con Código / Sin Sistema', desc: 'Fantasma codificado, buscar en kardex físico.', iconClass: 'fa-solid fa-triangle-exclamation' },
-                { id: 'amarillo', color: 'yellow', titulo: 'Ubicación / Custodio Incorrecto', desc: 'Movimiento no autorizado o préstamo.', iconClass: 'fa-solid fa-circle-question' },
-                { id: 'regional', color: 'purple', titulo: 'Activos Regionales', desc: 'Corresponde a otra sucursal o regional.', iconClass: 'fa-solid fa-globe' },
-                { id: 'azul', color: 'blue', titulo: 'Obsoleto / Para Baja', desc: 'Dañado, chatarra, requiere trámite de baja.', iconClass: 'fa-solid fa-circle-info' },
-                { id: 'verde', color: 'green', titulo: 'Regular / Actualización', desc: 'Actualización de datos físicos normales.', iconClass: 'fa-solid fa-circle-check' },
+                { id: 'rojo', color: 'red', titulo: 'Sin Código / Sin Sistema', iconClass: 'fa-solid fa-circle-exclamation' },
+                { id: 'naranja', color: 'orange', titulo: 'Con Código / Sin Sistema', iconClass: 'fa-solid fa-triangle-exclamation' },
+                { id: 'amarillo', color: 'yellow', titulo: 'Ubicación Incorrecta', iconClass: 'fa-solid fa-circle-question' },
+                { id: 'regional', color: 'purple', titulo: 'Activo Regional', iconClass: 'fa-solid fa-globe' },
+                { id: 'azul', color: 'blue', titulo: 'Obsoleto / Para Baja', iconClass: 'fa-solid fa-circle-info' },
+                { id: 'verde', color: 'green', titulo: 'Regular', iconClass: 'fa-solid fa-circle-check' },
             ];
 
-            const handleInputChange = (e) => {
-                const { name, value } = e.target;
-                setFormData({ ...formData, [name]: value });
-            };
+            const handleContextoChange = (e) => setContextoSesion({ ...contextoSesion, [e.target.name]: e.target.value });
+            const handleInputChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
             const handleCheckboxChange = (idRiesgo) => {
                 setFormData((prev) => {
@@ -95,431 +132,313 @@
                         nuevosEstados = nuevosEstados.filter(r => r !== idRiesgo);
                         if (nuevosEstados.length === 0) nuevosEstados = ['verde'];
                     } else {
-                        if (idRiesgo !== 'verde') {
-                            nuevosEstados = nuevosEstados.filter(r => r !== 'verde');
-                        } else {
-                            nuevosEstados = ['verde'];
-                        }
+                        if (idRiesgo !== 'verde') nuevosEstados = nuevosEstados.filter(r => r !== 'verde');
+                        else nuevosEstados = ['verde'];
                         nuevosEstados.push(idRiesgo);
                     }
                     return { ...prev, estadosRiesgo: nuevosEstados };
                 });
             };
 
-            const handlePhotoChange = (e) => {
+            // Manejador genérico para ambas fotos
+            const handlePhotoChange = (e, tipo) => {
                 const file = e.target.files[0];
                 if (file) {
-                    const imageUrl = URL.createObjectURL(file);
-                    setFormData({ ...formData, fotoUrl: imageUrl, fotoNombre: file.name });
+                    const imageUrl = URL.createObjectURL(file); // URL temporal en RAM
+                    if(tipo === 'activo') setFormData({ ...formData, fotoActivoUrl: imageUrl, fotoActivoNombre: file.name });
+                    if(tipo === 'codigo') setFormData({ ...formData, fotoCodigoUrl: imageUrl, fotoCodigoNombre: file.name });
                 }
             };
 
             const autocompletarFuncionario = (emp) => {
-                setFormData({
-                    ...formData,
-                    nombre: emp.nombre,
-                    ci: emp.ci,
-                    cargo: emp.cargo,
-                    cargoEspecifico: emp.cargoEspecifico,
-                    ubicacionFuncionario: emp.ubicacionFuncionario
-                });
+                setFormData({ ...formData, nombre: emp.nombre, ci: emp.ci, cargo: emp.cargo, cargoEspecifico: emp.cargoEspecifico, ubicacionFuncionario: emp.ubicacionFuncionario });
             };
 
-            // NUEVA FUNCIÓN: ELIMINAR ACTIVO (Local y en la Nube)
             const eliminarActivo = async (id, numeroActaAux) => {
                 if(!window.confirm(`¿Estás seguro de eliminar el registro ${numeroActaAux}?`)) return;
-                
-                // 1. Eliminar de la vista local
                 setActivos(activos.filter(a => a.id !== id));
-                // No restamos el contador de actas para no repetir códigos, es mejor que queden saltados.
-
-                // 2. Eliminar de la nube (SheetDB) buscando por la columna "Acta"
                 if (SHEETDB_URL !== "TU_URL_DE_SHEETDB_AQUI") {
                     try {
-                        await fetch(`${SHEETDB_URL}/Acta/${numeroActaAux}`, {
-                            method: 'DELETE',
-                            headers: {
-                                'Accept': 'application/json',
-                                'Content-Type': 'application/json'
-                            }
-                        });
-                        console.log("Registro eliminado de la nube");
-                    } catch (error) {
-                        console.error("Error al eliminar en la nube:", error);
-                    }
+                        await fetch(`${SHEETDB_URL}/Acta/${numeroActaAux}`, { method: 'DELETE', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' } });
+                    } catch (error) { console.error("Error SheetDB:", error); }
                 }
             };
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
-                setGuardando(true); // Mostramos el indicador de carga
+                setGuardando(true);
                 
-                const fechaHoraActual = new Date().toLocaleString('es-BO', {
-                    year: 'numeric', month: '2-digit', day: '2-digit',
-                    hour: '2-digit', minute: '2-digit', second: '2-digit'
-                });
-
+                const fechaHoraActual = new Date().toLocaleString('es-BO', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 const numActaFinal = formData.numeroActaAux || `ACT-AUX-${String(contadorActas + 1).padStart(4, '0')}`;
-
-                const descripcionesRiesgo = formData.estadosRiesgo
-                    .map(id => opcionesRiesgo.find(o => o.id === id)?.titulo)
-                    .join(' + ');
+                const descripcionesRiesgo = formData.estadosRiesgo.map(id => opcionesRiesgo.find(o => o.id === id)?.titulo).join(' + ');
 
                 const nuevoActivo = {
-                    ...formData,
-                    id: Date.now(),
-                    numeroActaAux: numActaFinal,
-                    fechaHoraRegistro: fechaHoraActual,
-                    descripcionRiesgo: descripcionesRiesgo
+                    ...formData, id: Date.now(), numeroActaAux: numActaFinal,
+                    fechaHoraRegistro: fechaHoraActual, descripcionRiesgo: descripcionesRiesgo,
+                    ciudadContexto: contextoSesion.ciudad, gerenciaContexto: contextoSesion.gerencia
                 };
 
-                // LÓGICA PARA GUARDAR EN SHEETDB (OPCIÓN 2)
                 if (SHEETDB_URL !== "TU_URL_DE_SHEETDB_AQUI") {
                     try {
-                        // Los nombres de la izquierda deben ser EXACTAMENTE iguales a los títulos de tus columnas en el Excel
                         const payload = {
                             data: [{
-                                "Acta": nuevoActivo.numeroActaAux,
-                                "Fecha": nuevoActivo.fechaHoraRegistro,
-                                "CI": nuevoActivo.ci,
-                                "Nombre": nuevoActivo.nombre,
+                                "Acta": nuevoActivo.numeroActaAux, "Fecha": nuevoActivo.fechaHoraRegistro,
+                                "Ciudad": nuevoActivo.ciudadContexto, "Gerencia": nuevoActivo.gerenciaContexto,
+                                "CI": nuevoActivo.ci, "Nombre": nuevoActivo.nombre,
                                 "Cargo": `${nuevoActivo.cargo} - ${nuevoActivo.cargoEspecifico}`,
                                 "Ubicacion_Resp": nuevoActivo.ubicacionFuncionario,
                                 "Codigo": nuevoActivo.codigoActivo || 'S/C',
                                 "Descripcion_Activo": nuevoActivo.descripcionActivo,
-                                "Ubicacion_Activo": nuevoActivo.ubicacionActivo,
-                                "Riesgo": nuevoActivo.descripcionRiesgo
+                                "Ubicacion_Activo": nuevoActivo.ubicacionActivo, "Riesgo": nuevoActivo.descripcionRiesgo
                             }]
                         };
 
                         const respuesta = await fetch(SHEETDB_URL, {
-                            method: 'POST',
-                            headers: {
-                                'Accept': 'application/json',
-                                'Content-Type': 'application/json'
-                            },
+                            method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
                             body: JSON.stringify(payload)
                         });
-
-                        if (!respuesta.ok) throw new Error("Fallo al guardar en SheetDB");
-                        console.log("Registro guardado en SheetDB exitosamente.");
+                        if (!respuesta.ok) throw new Error("Fallo al guardar");
                     } catch (error) {
-                        console.error("Error de SheetDB:", error);
-                        alert("No se pudo conectar con la nube. Revisa tu conexión.");
+                        alert("Guardado localmente, pero falló la conexión con Sheets.");
                     }
                 }
 
                 setActivos([nuevoActivo, ...activos]);
                 setContadorActas(contadorActas + 1);
                 
-                setEmpleadosRecientes((prev) => {
-                    const existe = prev.find(e => e.ci === formData.ci);
-                    if (existe) return prev;
-                    return [{
-                        nombre: formData.nombre,
-                        ci: formData.ci,
-                        cargo: formData.cargo,
-                        cargoEspecifico: formData.cargoEspecifico,
-                        ubicacionFuncionario: formData.ubicacionFuncionario
-                    }, ...prev].slice(0, 5); 
-                });
+                if(formData.nombre) {
+                    setEmpleadosRecientes((prev) => {
+                        const existe = prev.find(e => e.nombre === formData.nombre);
+                        if (existe) return prev;
+                        return [{ nombre: formData.nombre, ci: formData.ci, cargo: formData.cargo, cargoEspecifico: formData.cargoEspecifico, ubicacionFuncionario: formData.ubicacionFuncionario }, ...prev].slice(0, 5); 
+                    });
+                }
 
-                setFormData({
-                    ...formData,
-                    estadosRiesgo: ['verde'],
-                    codigoActivo: '',
-                    descripcionActivo: '',
-                    ubicacionActivo: '',
-                    fotoUrl: '',
-                    fotoNombre: ''
-                });
-                
-                if (fileInputRef.current) fileInputRef.current.value = '';
-                setGuardando(false); // Ocultamos el indicador de carga
+                setFormData({ ...formData, estadosRiesgo: ['verde'], codigoActivo: '', descripcionActivo: '', ubicacionActivo: '', fotoActivoNombre: '', fotoActivoUrl: '', fotoCodigoNombre: '', fotoCodigoUrl: '' });
+                setGuardando(false);
+                setPaginaActual(1);
             };
 
-            const exportToCSV = () => {
+            const exportToExcel = () => {
                 if (activos.length === 0) return alert("No hay datos para exportar.");
+                const datosParaExcel = activos.map(a => ({
+                    "Nº Acta": a.numeroActaAux, "Fecha de Registro": a.fechaHoraRegistro,
+                    "Ciudad": a.ciudadContexto, "Gerencia": a.gerenciaContexto,
+                    "C.I.": a.ci, "Custodio": a.nombre, "Cargo": `${a.cargo} - ${a.cargoEspecifico}`,
+                    "Oficina": a.ubicacionFuncionario, "Código": a.codigoActivo || 'S/C',
+                    "Descripción": a.descripcionActivo, "Ubicación Hallada": a.ubicacionActivo, 
+                    "Riesgo": a.descripcionRiesgo,
+                    "Foto Activo": a.fotoActivoNombre ? 'Sí' : 'No', // Indicamos en Excel si se tomó foto
+                    "Foto Plaqueta": a.fotoCodigoNombre ? 'Sí' : 'No'
+                }));
 
-                const headers = [
-                    "Nº Acta", "Fecha/Hora", "CI", "Responsable", "Cargo", "Ubicación Resp.",
-                    "Código Activo", "Descripción Activo", "Ubicación Física", "Estado/Problemas Múltiples"
-                ];
-
-                const rows = activos.map(a => [
-                    a.numeroActaAux,
-                    a.fechaHoraRegistro,
-                    a.ci,
-                    `"${a.nombre}"`,
-                    `"${a.cargo} - ${a.cargoEspecifico}"`,
-                    `"${a.ubicacionFuncionario}"`,
-                    a.codigoActivo || 'S/C',
-                    `"${a.descripcionActivo.replace(/"/g, '""')}"`,
-                    `"${a.ubicacionActivo}"`,
-                    `"${a.descripcionRiesgo}"`
-                ]);
-
-                const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-                const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement("a");
-                link.setAttribute("href", url);
-                link.setAttribute("download", `Inventario_Completo_${new Date().toISOString().split('T')[0]}.csv`);
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                const worksheet = XLSX.utils.json_to_sheet(datosParaExcel);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Inventario");
+                XLSX.writeFile(workbook, `Reporte_Inventario_${new Date().toISOString().split('T')[0]}.xlsx`);
             };
+
+            const activosFiltrados = activos.filter(a => {
+                const coincideTexto = a.numeroActaAux.toLowerCase().includes(filtroBusqueda.toLowerCase()) || (a.nombre && a.nombre.toLowerCase().includes(filtroBusqueda.toLowerCase())) || (a.codigoActivo && a.codigoActivo.toLowerCase().includes(filtroBusqueda.toLowerCase()));
+                let coincideFecha = true;
+                if (filtroFecha) {
+                    const f = filtroFecha.split('-');
+                    coincideFecha = a.fechaHoraRegistro.startsWith(`${f[2]}/${f[1]}/${f[0]}`);
+                }
+                return coincideTexto && coincideFecha;
+            });
+
+            const indexUltimoItem = paginaActual * itemsPorPagina;
+            const indexPrimerItem = indexUltimoItem - itemsPorPagina;
+            const activosPaginados = activosFiltrados.slice(indexPrimerItem, indexUltimoItem);
+            const totalPaginas = Math.ceil(activosFiltrados.length / itemsPorPagina);
+
+            useEffect(() => { setPaginaActual(1); }, [filtroBusqueda, filtroFecha]);
 
             return (
-                <div className="min-h-screen p-2 md:p-6 font-sans">
+                <div className="min-h-screen p-2 md:p-6 font-sans text-slate-800 dark:text-slate-200 transition-colors duration-300">
                     <div className="max-w-7xl mx-auto space-y-4">
                         
-                        {/* Cabecera */}
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 md:p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                        {/* Cabecera adaptativa */}
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex flex-col md:flex-row justify-between items-center gap-4 transition-colors">
                             <div className="flex items-center gap-4 w-full md:w-auto">
-                                <img src={LOGO_URL} alt="Logo" className="h-16 w-16 rounded-full object-cover border-2 border-slate-100 shadow-sm" />
+                                <img src={LOGO_URL} alt="Logo" className="h-14 w-14 rounded-full object-cover border-2 border-slate-100 dark:border-slate-600 shadow-sm" />
                                 <div>
-                                    <h1 className="text-xl md:text-2xl font-bold text-slate-800">Levantamiento de Inventario</h1>
-                                    <p className="text-slate-500 text-sm">Control Múltiple y Autocompletado</p>
+                                    <h1 className="text-xl md:text-2xl font-bold leading-tight">Auditoría de Activos</h1>
+                                    <p className="text-slate-500 dark:text-slate-400 text-xs">V6 • Doble Foto & Temas</p>
                                 </div>
                             </div>
                             
-                            <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-                                <div className="text-center bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
-                                    <span className="block text-slate-500 font-semibold text-[10px] uppercase tracking-wider">Actas Registradas</span>
-                                    <span className="text-2xl font-black text-blue-600">{contadorActas}</span>
+                            <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+                                <div className="text-center bg-slate-50 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600">
+                                    <span className="block text-slate-500 dark:text-slate-300 font-semibold text-[9px] uppercase tracking-wider">Registros</span>
+                                    <span className="text-xl font-black text-blue-600 dark:text-blue-400">{activos.length}</span>
                                 </div>
-                                
                                 {activos.length > 0 && (
-                                    <button onClick={exportToCSV} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-lg text-sm font-bold transition-colors shadow-sm">
-                                        <i className="fa-solid fa-download"></i>
-                                        <span className="hidden md:inline">Descargar Excel</span>
+                                    <button onClick={exportToExcel} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold shadow-sm">
+                                        <i className="fa-solid fa-file-excel"></i> <span className="hidden md:inline">Descargar XLSX</span>
                                     </button>
                                 )}
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-20">
                             
-                            {/* Columna Izquierda: Formulario */}
+                            {/* FORMULARIO */}
                             <div className="lg:col-span-5 space-y-4">
-                                <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 md:p-6">
-                                    
-                                    {/* Sección: Historial */}
-                                    {empleadosRecientes.length > 0 && (
-                                        <div className="mb-6 bg-blue-50 border border-blue-100 p-3 rounded-lg">
-                                            <h3 className="text-xs font-bold text-blue-800 mb-2 flex items-center gap-1">
-                                                <i className="fa-solid fa-clock-rotate-left"></i> Historial de Funcionarios (Clic para rellenar)
-                                            </h3>
-                                            <div className="flex flex-wrap gap-2">
-                                                {empleadosRecientes.map((emp) => (
-                                                    <button 
-                                                        key={emp.ci} type="button" 
-                                                        onClick={() => autocompletarFuncionario(emp)}
-                                                        className="bg-white hover:bg-blue-100 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-md text-xs font-medium transition-colors shadow-sm"
-                                                    >
-                                                        {emp.nombre.split(' ')[0]} ({emp.ci})
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <p className="text-[10px] text-blue-600 mt-1">Útil si olvidaste un activo y necesitas volver a este funcionario.</p>
+                                <div className="bg-slate-800 dark:bg-slate-950 rounded-xl shadow-sm border border-slate-700 p-4">
+                                    <h2 className="text-sm font-bold text-white mb-3 flex items-center gap-2"><i className="fa-solid fa-location-crosshairs text-blue-400"></i> Contexto General</h2>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-300 mb-1">CIUDAD / SEDE</label>
+                                            <input type="text" name="ciudad" value={contextoSesion.ciudad} onChange={handleContextoChange} className="w-full px-3 py-1.5 bg-slate-700 dark:bg-slate-800 border border-slate-600 text-white rounded-md text-sm outline-none" />
                                         </div>
-                                    )}
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-300 mb-1">GERENCIA / ÁREA</label>
+                                            <input type="text" name="gerencia" value={contextoSesion.gerencia} onChange={handleContextoChange} className="w-full px-3 py-1.5 bg-slate-700 dark:bg-slate-800 border border-slate-600 text-white rounded-md text-sm outline-none" />
+                                        </div>
+                                    </div>
+                                </div>
 
-                                    {/* Sección: Datos del Responsable */}
+                                <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 md:p-6 transition-colors">
                                     <div className="mb-6">
-                                        <h2 className="text-base font-bold text-slate-800 mb-3 pb-2 border-b border-slate-100 flex items-center gap-2">
-                                            <i className="fa-solid fa-user text-blue-500"></i>
-                                            1. Datos del Responsable Actual
-                                        </h2>
+                                        <h2 className="text-sm font-bold mb-3 pb-2 border-b border-slate-100 dark:border-slate-700 flex items-center gap-2"><i className="fa-solid fa-user text-blue-500"></i> 1. Custodio</h2>
                                         <div className="space-y-3">
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-600 mb-1">Nombre Completo (Opcional)</label>
-                                                <input type="text" name="nombre" value={formData.nombre} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ej. Juan Pérez" />
+                                            <div><input type="text" name="nombre" value={formData.nombre} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Nombre (Opcional)" /></div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <input type="text" name="ci" value={formData.ci} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="C.I." />
+                                                <input type="text" name="numeroActaAux" value={formData.numeroActaAux} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-600 rounded-md text-sm outline-none" placeholder="Acta (Auto)" />
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">C.I. (Opcional)</label>
-                                                    <input type="text" name="ci" value={formData.ci} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Nº Acta Aux. (Opcional)</label>
-                                                    <input type="text" name="numeroActaAux" value={formData.numeroActaAux} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Auto-generado" />
-                                                </div>
+                                                <input type="text" name="cargo" value={formData.cargo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Cargo" />
+                                                <input type="text" name="cargoEspecifico" value={formData.cargoEspecifico} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Específico" />
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Cargo Gral. (Opcional)</label>
-                                                    <input type="text" name="cargo" value={formData.cargo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Específico (Opcional)</label>
-                                                    <input type="text" name="cargoEspecifico" value={formData.cargoEspecifico} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-600 mb-1">Ubicación / Área (Opcional)</label>
-                                                <input type="text" name="ubicacionFuncionario" value={formData.ubicacionFuncionario} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                                            </div>
+                                            <input type="text" name="ubicacionFuncionario" value={formData.ubicacionFuncionario} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Oficina / Área" />
                                         </div>
                                     </div>
 
-                                    {/* Sección: Inspección del Activo */}
                                     <div>
-                                        <h2 className="text-base font-bold text-slate-800 mb-3 pb-2 border-b border-slate-100 flex items-center gap-2">
-                                            <i className="fa-solid fa-hashtag text-blue-500"></i>
-                                            2. Inspección del Activo (Opción Múltiple)
-                                        </h2>
+                                        <h2 className="text-sm font-bold mb-3 pb-2 border-b border-slate-100 dark:border-slate-700 flex items-center gap-2"><i className="fa-solid fa-hashtag text-blue-500"></i> 2. Detalle Activo</h2>
                                         
-                                        <div className="space-y-4">
-                                            <div className="mb-2">
-                                                <label className="block text-xs font-bold text-slate-800 mb-2">Selecciona las casuísticas que aplican:</label>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                    {opcionesRiesgo.map((opcion) => (
-                                                        <div 
-                                                            key={opcion.id} 
-                                                            onClick={() => handleCheckboxChange(opcion.id)}
-                                                            className={`flex items-start p-2 border rounded-lg cursor-pointer transition-all select-none ${formData.estadosRiesgo.includes(opcion.id) ? `${clrs[opcion.color].bg} ${clrs[opcion.color].border} shadow-sm ring-1 ${clrs[opcion.color].ring}` : 'bg-white border-slate-200 hover:bg-slate-50'}`}
-                                                        >
-                                                            <div className={`mt-0.5 mr-2 ${clrs[opcion.color].text}`}>
-                                                                {formData.estadosRiesgo.includes(opcion.id) 
-                                                                    ? <i className="fa-solid fa-square-check text-[16px]"></i> 
-                                                                    : <i className="fa-regular fa-square text-[16px] text-slate-300"></i>}
-                                                            </div>
-                                                            <div>
-                                                                <span className={`block text-xs font-bold ${formData.estadosRiesgo.includes(opcion.id) ? clrs[opcion.color].textDark : 'text-slate-700'}`}>
-                                                                    {opcion.titulo}
-                                                                </span>
-                                                                <span className="text-[10px] text-slate-500 leading-tight block mt-0.5">{opcion.desc}</span>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="col-span-2 md:col-span-1">
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Código (Opcional)</label>
-                                                    <input type="text" name="codigoActivo" value={formData.codigoActivo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="AF-12345 o S/C" />
-                                                </div>
-                                                <div className="col-span-2 md:col-span-1">
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Foto (Opcional)</label>
-                                                    <div className="flex items-center gap-2">
-                                                        <button type="button" onClick={() => fileInputRef.current.click()} className="flex-1 flex justify-center items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-md text-sm font-medium transition-colors">
-                                                            <i className="fa-solid fa-camera"></i> Cámara
-                                                        </button>
-                                                        <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handlePhotoChange} capture="environment" />
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
+                                            {opcionesRiesgo.map((opcion) => (
+                                                <div key={opcion.id} onClick={() => handleCheckboxChange(opcion.id)} className={`flex items-center p-2 border rounded-lg cursor-pointer transition-all ${formData.estadosRiesgo.includes(opcion.id) ? `${clrs[opcion.color].bg} ${clrs[opcion.color].border}` : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600'}`}>
+                                                    <div className={`mr-2 ${clrs[opcion.color].text}`}>
+                                                        {formData.estadosRiesgo.includes(opcion.id) ? <i className="fa-solid fa-square-check"></i> : <i className="fa-regular fa-square text-slate-300 dark:text-slate-500"></i>}
                                                     </div>
-                                                    {formData.fotoNombre && <p className="text-[10px] text-emerald-600 mt-1 font-bold truncate">✓ {formData.fotoNombre}</p>}
+                                                    <span className={`text-[11px] font-bold ${formData.estadosRiesgo.includes(opcion.id) ? clrs[opcion.color].textDark : 'text-slate-700 dark:text-slate-300'}`}>{opcion.titulo}</span>
                                                 </div>
-                                                <div className="col-span-2">
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Descripción del Activo (Opcional)</label>
-                                                    <textarea name="descripcionActivo" value={formData.descripcionActivo} onChange={handleInputChange} rows="2" className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Tipo, Marca, Modelo, Serie..."></textarea>
-                                                </div>
-                                                <div className="col-span-2">
-                                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Ubicación Física Específica (Opcional)</label>
-                                                    <input type="text" name="ubicacionActivo" value={formData.ubicacionActivo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ej. Escritorio izquierdo" />
-                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="col-span-2">
+                                                <input type="text" name="codigoActivo" value={formData.codigoActivo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm font-mono uppercase outline-none" placeholder="Código Plaqueta (Opcional)" />
+                                            </div>
+                                            
+                                            {/* DOBLE FOTO */}
+                                            <div className="col-span-1">
+                                                <button type="button" onClick={() => fileActivoRef.current.click()} className="w-full flex flex-col items-center gap-1 p-2 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-md text-xs font-medium transition-colors">
+                                                    <i className="fa-solid fa-camera text-blue-500"></i> {formData.fotoActivoNombre ? 'Cambiar Foto' : 'Foto Activo'}
+                                                </button>
+                                                <input type="file" accept="image/*" className="hidden" ref={fileActivoRef} onChange={(e) => handlePhotoChange(e, 'activo')} capture="environment" />
+                                                {formData.fotoActivoNombre && <p className="text-[9px] text-emerald-600 dark:text-emerald-400 mt-1 truncate">✓ Tomada</p>}
+                                            </div>
+                                            <div className="col-span-1">
+                                                <button type="button" onClick={() => fileCodigoRef.current.click()} className="w-full flex flex-col items-center gap-1 p-2 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-md text-xs font-medium transition-colors">
+                                                    <i className="fa-solid fa-barcode text-purple-500"></i> {formData.fotoCodigoNombre ? 'Cambiar Foto' : 'Foto Código'}
+                                                </button>
+                                                <input type="file" accept="image/*" className="hidden" ref={fileCodigoRef} onChange={(e) => handlePhotoChange(e, 'codigo')} capture="environment" />
+                                                {formData.fotoCodigoNombre && <p className="text-[9px] text-emerald-600 dark:text-emerald-400 mt-1 truncate">✓ Tomada</p>}
                                             </div>
 
-                                            <div className="pt-4 mt-2 border-t border-slate-100">
-                                                <button type="submit" disabled={guardando} className={`w-full flex justify-center items-center gap-2 text-white px-4 py-3 rounded-lg text-sm font-bold transition-colors shadow-md ${guardando ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                                                    {guardando ? (
-                                                        <><i className="fa-solid fa-spinner fa-spin"></i> Guardando en Nube...</>
-                                                    ) : (
-                                                        <><i className="fa-solid fa-floppy-disk"></i> Guardar y Añadir al Lote</>
-                                                    )}
-                                                </button>
+                                            <div className="col-span-2">
+                                                <textarea name="descripcionActivo" value={formData.descripcionActivo} onChange={handleInputChange} rows="2" className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Descripción: Marca, Modelo, Color..."></textarea>
+                                            </div>
+                                            <div className="col-span-2">
+                                                <input type="text" name="ubicacionActivo" value={formData.ubicacionActivo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Ubicación Física (Ej. En estante)" />
                                             </div>
                                         </div>
+
+                                        <button type="submit" disabled={guardando} className={`w-full mt-4 flex justify-center items-center gap-2 text-white px-4 py-4 rounded-lg text-sm font-black uppercase shadow-md ${guardando ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                                            {guardando ? <><i className="fa-solid fa-spinner fa-spin"></i> Procesando...</> : <><i className="fa-solid fa-cloud-arrow-up"></i> Guardar</>}
+                                        </button>
                                     </div>
                                 </form>
                             </div>
 
-                            {/* Columna Derecha: Lista */}
-                            <div className="lg:col-span-7 space-y-4">
-                                {activos.length === 0 ? (
-                                    <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 md:p-12 flex flex-col items-center justify-center text-slate-400 h-full min-h-[400px]">
-                                        <i className="fa-solid fa-file-lines text-5xl mb-4 opacity-50 text-blue-300"></i>
-                                        <p className="text-center font-bold text-slate-600 text-lg">Sin activos registrados aún</p>
-                                        <p className="text-center text-sm mt-2 max-w-sm">Los activos registrados aparecerán aquí. Al final del día, haz clic en "Descargar Excel" para guardar tu trabajo.</p>
+                            {/* LISTA DERECHA */}
+                            <div className="lg:col-span-7 flex flex-col h-full max-h-[90vh]">
+                                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-3 mb-4 flex flex-col md:flex-row gap-2">
+                                    <div className="relative flex-1">
+                                        <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                                        <input type="text" placeholder="Buscar Acta, Nombre, Código..." value={filtroBusqueda} onChange={(e) => setFiltroBusqueda(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg text-sm outline-none" />
                                     </div>
-                                ) : (
-                                    <div className="space-y-4 overflow-y-auto max-h-[800px] pr-1 md:pr-2 pb-10 custom-scrollbar">
-                                        {activos.map((activo) => {
+                                    <div className="relative flex-1 md:max-w-[200px]">
+                                        <input type="date" value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg text-sm outline-none" />
+                                    </div>
+                                    {(filtroBusqueda || filtroFecha) && (<button onClick={() => {setFiltroBusqueda(''); setFiltroFecha('');}} className="px-3 py-2 text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg text-sm font-bold">Limpiar</button>)}
+                                </div>
+
+                                <div className="flex flex-col flex-1 overflow-hidden">
+                                    <div className="flex justify-between items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-t-lg p-2 shrink-0">
+                                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Mostrando {activosFiltrados.length > 0 ? indexPrimerItem + 1 : 0}-{Math.min(indexUltimoItem, activosFiltrados.length)} de {activosFiltrados.length}</span>
+                                        <div className="flex gap-1">
+                                            <button disabled={paginaActual === 1} onClick={() => setPaginaActual(paginaActual - 1)} className="px-2 py-1 bg-slate-100 dark:bg-slate-700 disabled:opacity-50 rounded text-xs font-bold"><i className="fa-solid fa-chevron-left"></i></button>
+                                            <span className="px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-bold">Pág {paginaActual}/{totalPaginas || 1}</span>
+                                            <button disabled={paginaActual === totalPaginas || totalPaginas === 0} onClick={() => setPaginaActual(paginaActual + 1)} className="px-2 py-1 bg-slate-100 dark:bg-slate-700 disabled:opacity-50 rounded text-xs font-bold"><i className="fa-solid fa-chevron-right"></i></button>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3 overflow-y-auto pr-1 py-3 custom-scrollbar flex-1 bg-slate-50 dark:bg-slate-900 border-l border-r border-slate-200 dark:border-slate-700 px-2">
+                                        {activosPaginados.map((activo) => {
                                             const riesgoPrincipal = activo.estadosRiesgo[0] || 'verde';
                                             const colorInfo = opcionesRiesgo.find(o => o.id === riesgoPrincipal);
                                             const bordeRiesgo = clrs[colorInfo.color].border;
-                                            const fondoRiesgo = clrs[colorInfo.color].bg;
 
                                             return (
-                                                <div key={activo.id} className={`rounded-xl border-l-[6px] shadow-sm p-4 md:p-5 bg-white ${bordeRiesgo}`}>
+                                                <div key={activo.id} className={`rounded-xl border-l-[6px] shadow-sm p-4 bg-white dark:bg-slate-800 ${bordeRiesgo} relative group`}>
+                                                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => eliminarActivo(activo.id, activo.numeroActaAux)} className="text-white bg-red-500 px-3 py-1.5 rounded-lg text-xs font-bold shadow-md"><i className="fa-solid fa-trash-can"></i></button>
+                                                    </div>
                                                     
-                                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-3 gap-2">
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {activo.estadosRiesgo.map(riesgoId => {
-                                                                const rInfo = opcionesRiesgo.find(o => o.id === riesgoId);
-                                                                return (
-                                                                    <span key={riesgoId} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${clrs[rInfo.color].bgLight} ${clrs[rInfo.color].textDark}`}>
-                                                                        <i className={rInfo.iconClass}></i> {rInfo.titulo}
-                                                                    </span>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="bg-slate-800 text-white px-2 py-1 rounded text-xs font-bold font-mono shadow-sm">
-                                                                {activo.numeroActaAux}
-                                                            </span>
-                                                            <button 
-                                                                onClick={() => eliminarActivo(activo.id, activo.numeroActaAux)}
-                                                                className="flex items-center gap-1 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded transition-colors text-xs font-bold shadow-sm"
-                                                                title="Eliminar este registro"
-                                                            >
-                                                                <i className="fa-solid fa-trash-can"></i> Eliminar
-                                                            </button>
+                                                    <div className="flex justify-between items-center mb-2 pr-12">
+                                                        <span className="bg-slate-800 dark:bg-slate-950 text-white px-2 py-1 rounded text-[10px] font-bold font-mono">{activo.numeroActaAux}</span>
+                                                        <div className="flex gap-2">
+                                                            {activo.fotoActivoUrl && <i className="fa-solid fa-image text-blue-500" title="Foto Activo guardada localmente"></i>}
+                                                            {activo.fotoCodigoUrl && <i className="fa-solid fa-barcode text-purple-500" title="Foto Plaqueta guardada localmente"></i>}
                                                         </div>
                                                     </div>
 
-                                                    <div className="flex justify-between items-start">
-                                                        <div className="flex-1">
-                                                            <h3 className="font-black text-slate-800 text-lg mb-1">
-                                                                {activo.codigoActivo ? `Cód: ${activo.codigoActivo}` : 'Sin Código (S/C)'}
-                                                            </h3>
-                                                            <p className="text-sm text-slate-700 font-medium mb-3 italic">
-                                                                "{activo.descripcionActivo}"
-                                                            </p>
-                                                        </div>
-                                                        
-                                                        {activo.fotoUrl && (
-                                                            <div className="ml-4 shrink-0">
-                                                                <img src={activo.fotoUrl} alt="Evidencia" className="h-16 w-16 object-cover rounded-md border border-slate-200 shadow-sm" />
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                    <h3 className="font-black text-lg">{activo.codigoActivo ? `Cód: ${activo.codigoActivo}` : 'Sin Código (S/C)'}</h3>
+                                                    <p className="text-sm font-medium mb-3 opacity-80">{activo.descripcionActivo || 'Sin descripción'}</p>
                                                     
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-y-1 gap-x-4 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-200 mt-2">
-                                                        <div className="flex items-center gap-1.5 text-slate-600">
-                                                            <i className="fa-solid fa-user text-blue-500 shrink-0"></i>
-                                                            <span className="truncate"><span className="font-bold text-slate-800">{activo.nombre}</span> ({activo.ci})</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1.5 text-slate-600">
-                                                            <i className="fa-solid fa-location-dot text-red-500 shrink-0"></i>
-                                                            <span className="truncate">{activo.ubicacionActivo}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1.5 text-slate-600 md:col-span-2 border-t border-slate-200 pt-1.5 mt-1">
-                                                            <i className="fa-solid fa-clock text-green-600 shrink-0"></i>
-                                                            <span>Registro: <span className="font-mono font-bold">{activo.fechaHoraRegistro}</span></span>
-                                                        </div>
+                                                    <div className="grid grid-cols-2 gap-1 text-[11px] bg-slate-50 dark:bg-slate-700/50 p-2 rounded-lg mt-1">
+                                                        <div className="truncate"><i className="fa-solid fa-user text-blue-500 w-3"></i> {activo.nombre || 'Anónimo'}</div>
+                                                        <div className="truncate"><i className="fa-solid fa-location-dot text-red-500 w-3"></i> {activo.ubicacionActivo || 'N/A'}</div>
                                                     </div>
-                                                    
                                                 </div>
                                             );
                                         })}
                                     </div>
-                                )}
+                                </div>
                             </div>
                         </div>
                     </div>
+
+                    {/* =========================================================
+                        BOTÓN FLOTANTE: SELECTOR DE TEMA
+                    ========================================================= */}
+                    <button 
+                        onClick={cambiarTema}
+                        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all hover:scale-110 active:scale-95 z-50
+                        bg-slate-800 text-yellow-400 dark:bg-slate-100 dark:text-slate-800 theme-night:bg-amber-600 theme-night:text-white"
+                        title="Cambiar Tema (Claro / Oscuro / Nocturno)"
+                    >
+                        {temaActivo === 'light' && <i className="fa-solid fa-moon"></i>}
+                        {temaActivo === 'dark' && <i className="fa-solid fa-eye" title="Modo Nocturno (Sepia)"></i>}
+                        {temaActivo === 'night' && <i className="fa-solid fa-sun"></i>}
+                    </button>
                 </div>
             );
         }
