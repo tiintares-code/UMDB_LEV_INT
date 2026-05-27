@@ -17,6 +17,8 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Librería oficial de Excel (SheetJS) -->
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
     <style>
@@ -63,7 +65,9 @@
             const [contadorActas, setContadorActas] = useState(() => { const g = localStorage.getItem('app_contador'); return g ? parseInt(g) : 0; });
             const [empleadosRecientes, setEmpleadosRecientes] = useState(() => { const g = localStorage.getItem('app_empleados'); return g ? JSON.parse(g) : []; });
             
-            // AÑADIDO: Guardar la API Key de ImgBB en memoria para no volver a pedirla
+            // ESTADO NUEVO: Para saber qué registro estamos editando
+            const [editandoId, setEditandoId] = useState(null);
+
             const [contextoSesion, setContextoSesion] = useState(() => { 
                 const g = localStorage.getItem('app_contexto'); 
                 return g ? JSON.parse(g) : { ciudad: 'La Paz', gerencia: '', imgbbKey: '' }; 
@@ -81,19 +85,17 @@
             const itemsPorPagina = 10;
 
             const LOGO_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQzL0ANgclJcSvKlLJDjeHH-tpIbl9SHI9mXg&s";
-            
-            // ==============================================================
-            // AQUÍ ESTÁ TU NUEVA API DE SHEETDB YA INTEGRADA
             const SHEETDB_URL = "https://sheetdb.io/api/v1/4xqfgf76j76hq"; 
-            // ==============================================================
 
-            const [formData, setFormData] = useState({
+            const estadoInicialFormulario = {
                 nombre: '', ci: '', cargo: '', cargoEspecifico: '', ubicacionFuncionario: '',
                 numeroActaAux: '', estadosRiesgo: ['verde'], codigoActivo: '',
                 descripcionActivo: '', ubicacionActivo: '', 
-                fotoActivoNombre: '', fotoActivoUrl: '', fotoActivoFile: null, // Guardamos el archivo real
+                fotoActivoNombre: '', fotoActivoUrl: '', fotoActivoFile: null, 
                 fotoCodigoNombre: '', fotoCodigoUrl: '', fotoCodigoFile: null
-            });
+            };
+
+            const [formData, setFormData] = useState(estadoInicialFormulario);
 
             const fileActivoRef = useRef(null);
             const fileCodigoRef = useRef(null);
@@ -147,6 +149,32 @@
                 setFormData({ ...formData, nombre: emp.nombre, ci: emp.ci, cargo: emp.cargo, cargoEspecifico: emp.cargoEspecifico, ubicacionFuncionario: emp.ubicacionFuncionario });
             };
 
+            // INICIAR EDICIÓN
+            const iniciarEdicion = (activo) => {
+                setEditandoId(activo.id);
+                setFormData({
+                    nombre: activo.nombre || '', 
+                    ci: activo.ci || '', 
+                    cargo: activo.cargo?.split(' - ')[0] || '', 
+                    cargoEspecifico: activo.cargo?.split(' - ')[1] || '', 
+                    ubicacionFuncionario: activo.ubicacionFuncionario || '',
+                    numeroActaAux: activo.numeroActaAux || '', 
+                    estadosRiesgo: activo.estadosRiesgo || ['verde'], 
+                    codigoActivo: activo.codigoActivo || '',
+                    descripcionActivo: activo.descripcionActivo || '', 
+                    ubicacionActivo: activo.ubicacionActivo || '', 
+                    fotoActivoNombre: '', fotoActivoUrl: activo.fotoActivoFinal || '', fotoActivoFile: null, 
+                    fotoCodigoNombre: '', fotoCodigoUrl: activo.fotoCodigoFinal || '', fotoCodigoFile: null
+                });
+                window.scrollTo({ top: 0, behavior: 'smooth' }); // Subir al formulario
+            };
+
+            // CANCELAR EDICIÓN
+            const cancelarEdicion = () => {
+                setEditandoId(null);
+                setFormData(estadoInicialFormulario);
+            };
+
             const eliminarActivo = async (id, numeroActaAux) => {
                 if(!window.confirm(`¿Estás seguro de eliminar el registro ${numeroActaAux}?`)) return;
                 setActivos(activos.filter(a => a.id !== id));
@@ -156,7 +184,6 @@
                 }
             };
 
-            // FUNCIÓN MÁGICA: Sube la foto a ImgBB y devuelve el enlace web
             const subirFotoImgBB = async (archivo, apiKey) => {
                 const formDataUpload = new FormData();
                 formDataUpload.append('image', archivo);
@@ -173,64 +200,87 @@
                 e.preventDefault();
                 setGuardando(true);
                 
-                let urlFotoActivo = formData.fotoActivoNombre ? 'Sí (Falta API)' : 'No';
-                let urlFotoCodigo = formData.fotoCodigoNombre ? 'Sí (Falta API)' : 'No';
+                // Mantener fotos existentes si se está editando y no se seleccionaron nuevas
+                let urlFotoActivo = formData.fotoActivoFile ? 'Procesando...' : (formData.fotoActivoUrl || 'No');
+                let urlFotoCodigo = formData.fotoCodigoFile ? 'Procesando...' : (formData.fotoCodigoUrl || 'No');
 
-                // Si ingresó la llave de ImgBB, subimos las fotos a la nube antes de registrar en Sheets
                 if (contextoSesion.imgbbKey) {
                     try {
-                        if (formData.fotoActivoFile) {
-                            urlFotoActivo = await subirFotoImgBB(formData.fotoActivoFile, contextoSesion.imgbbKey);
-                        }
-                        if (formData.fotoCodigoFile) {
-                            urlFotoCodigo = await subirFotoImgBB(formData.fotoCodigoFile, contextoSesion.imgbbKey);
-                        }
+                        if (formData.fotoActivoFile) urlFotoActivo = await subirFotoImgBB(formData.fotoActivoFile, contextoSesion.imgbbKey);
+                        if (formData.fotoCodigoFile) urlFotoCodigo = await subirFotoImgBB(formData.fotoCodigoFile, contextoSesion.imgbbKey);
                     } catch (error) {
                         console.error("Error fotos:", error);
                         alert("Error subiendo fotos a ImgBB. Revisa si tu API Key es correcta.");
+                        urlFotoActivo = 'Sí (Fallo Subida)';
+                        urlFotoCodigo = 'Sí (Fallo Subida)';
                     }
+                } else if (formData.fotoActivoFile || formData.fotoCodigoFile) {
+                    if(formData.fotoActivoFile) urlFotoActivo = 'Sí (Sin ImgBB)';
+                    if(formData.fotoCodigoFile) urlFotoCodigo = 'Sí (Sin ImgBB)';
                 }
 
                 const fechaHoraActual = new Date().toLocaleString('es-BO', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 const numActaFinal = formData.numeroActaAux || `ACT-AUX-${String(contadorActas + 1).padStart(4, '0')}`;
                 const descripcionesRiesgo = formData.estadosRiesgo.map(id => opcionesRiesgo.find(o => o.id === id)?.titulo).join(' + ');
 
+                // Si estamos editando, mantenemos el ID original y la fecha original
+                const activoEditadoExistente = editandoId ? activos.find(a => a.id === editandoId) : null;
+
                 const nuevoActivo = {
-                    ...formData, id: Date.now(), numeroActaAux: numActaFinal,
-                    fechaHoraRegistro: fechaHoraActual, descripcionRiesgo: descripcionesRiesgo,
-                    ciudadContexto: contextoSesion.ciudad, gerenciaContexto: contextoSesion.gerencia,
-                    fotoActivoFinal: urlFotoActivo, fotoCodigoFinal: urlFotoCodigo
+                    ...formData, 
+                    id: editandoId || Date.now(), 
+                    numeroActaAux: numActaFinal,
+                    fechaHoraRegistro: editandoId ? activoEditadoExistente.fechaHoraRegistro : fechaHoraActual, 
+                    descripcionRiesgo: descripcionesRiesgo,
+                    ciudadContexto: contextoSesion.ciudad, 
+                    gerenciaContexto: contextoSesion.gerencia,
+                    fotoActivoFinal: urlFotoActivo, 
+                    fotoCodigoFinal: urlFotoCodigo,
+                    estadosRiesgo: formData.estadosRiesgo // Importante para recuperar estados al editar
                 };
 
                 if (SHEETDB_URL) {
                     try {
-                        const payload = {
-                            data: [{
-                                "Acta": nuevoActivo.numeroActaAux, "Fecha": nuevoActivo.fechaHoraRegistro,
-                                "Ciudad": nuevoActivo.ciudadContexto, "Gerencia": nuevoActivo.gerenciaContexto,
-                                "CI": nuevoActivo.ci, "Nombre": nuevoActivo.nombre,
-                                "Cargo": `${nuevoActivo.cargo} - ${nuevoActivo.cargoEspecifico}`,
-                                "Ubicacion_Resp": nuevoActivo.ubicacionFuncionario,
-                                "Codigo": nuevoActivo.codigoActivo || 'S/C',
-                                "Descripcion_Activo": nuevoActivo.descripcionActivo,
-                                "Ubicacion_Activo": nuevoActivo.ubicacionActivo, "Riesgo": nuevoActivo.descripcionRiesgo,
-                                "Foto_Activo": nuevoActivo.fotoActivoFinal,
-                                "Foto_Plaqueta": nuevoActivo.fotoCodigoFinal
-                            }]
+                        const rowData = {
+                            "Acta": nuevoActivo.numeroActaAux, "Fecha": nuevoActivo.fechaHoraRegistro,
+                            "Ciudad": nuevoActivo.ciudadContexto, "Gerencia": nuevoActivo.gerenciaContexto,
+                            "CI": nuevoActivo.ci, "Nombre": nuevoActivo.nombre,
+                            "Cargo": `${nuevoActivo.cargo} - ${nuevoActivo.cargoEspecifico}`,
+                            "Ubicacion_Resp": nuevoActivo.ubicacionFuncionario,
+                            "Codigo": nuevoActivo.codigoActivo || 'S/C',
+                            "Descripcion_Activo": nuevoActivo.descripcionActivo,
+                            "Ubicacion_Activo": nuevoActivo.ubicacionActivo, "Riesgo": nuevoActivo.descripcionRiesgo,
+                            "Foto_Activo": nuevoActivo.fotoActivoFinal,
+                            "Foto_Plaqueta": nuevoActivo.fotoCodigoFinal
                         };
 
-                        const respuesta = await fetch(SHEETDB_URL, {
-                            method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-                        if (!respuesta.ok) throw new Error("Fallo al guardar");
+                        if (editandoId) {
+                            // Método PUT para editar en SheetDB (Busca por Acta)
+                            const respuesta = await fetch(`${SHEETDB_URL}/Acta/${numActaFinal}`, {
+                                method: 'PUT', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ data: [rowData] })
+                            });
+                            if (!respuesta.ok) throw new Error("Fallo al actualizar en la nube");
+                        } else {
+                            // Método POST para nuevo registro
+                            const respuesta = await fetch(SHEETDB_URL, {
+                                method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ data: [rowData] })
+                            });
+                            if (!respuesta.ok) throw new Error("Fallo al guardar en la nube");
+                        }
                     } catch (error) {
                         alert("Guardado localmente, pero falló la conexión con Sheets.");
                     }
                 }
 
-                setActivos([nuevoActivo, ...activos]);
-                setContadorActas(contadorActas + 1);
+                if (editandoId) {
+                    setActivos(activos.map(a => a.id === editandoId ? nuevoActivo : a));
+                    setEditandoId(null);
+                } else {
+                    setActivos([nuevoActivo, ...activos]);
+                    setContadorActas(contadorActas + 1);
+                }
                 
                 if(formData.nombre) {
                     setEmpleadosRecientes((prev) => {
@@ -240,33 +290,37 @@
                     });
                 }
 
-                // Limpiar formulario para el siguiente activo
-                setFormData({ 
-                    ...formData, estadosRiesgo: ['verde'], codigoActivo: '', descripcionActivo: '', ubicacionActivo: '', 
-                    fotoActivoNombre: '', fotoActivoUrl: '', fotoActivoFile: null, 
-                    fotoCodigoNombre: '', fotoCodigoUrl: '', fotoCodigoFile: null 
-                });
+                setFormData(estadoInicialFormulario);
                 setGuardando(false);
                 setPaginaActual(1);
             };
 
             const exportToExcel = () => {
-                if (activos.length === 0) return alert("No hay datos para exportar.");
-                const datosParaExcel = activos.map(a => ({
-                    "Nº Acta": a.numeroActaAux, "Fecha de Registro": a.fechaHoraRegistro,
-                    "Ciudad": a.ciudadContexto, "Gerencia": a.gerenciaContexto,
-                    "C.I.": a.ci, "Custodio": a.nombre, "Cargo": `${a.cargo} - ${a.cargoEspecifico}`,
-                    "Oficina": a.ubicacionFuncionario, "Código": a.codigoActivo || 'S/C',
-                    "Descripción": a.descripcionActivo, "Ubicación Hallada": a.ubicacionActivo, 
-                    "Riesgo": a.descripcionRiesgo,
-                    "Enlace Foto Activo": a.fotoActivoFinal,
-                    "Enlace Foto Plaqueta": a.fotoCodigoFinal
-                }));
+                try {
+                    if (activos.length === 0) return alert("No hay datos para exportar.");
+                    if (typeof XLSX === 'undefined') {
+                        return alert("La librería de Excel aún no ha cargado o está bloqueada por tu red. Intenta refrescar la página.");
+                    }
 
-                const worksheet = XLSX.utils.json_to_sheet(datosParaExcel);
-                const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, "Inventario");
-                XLSX.writeFile(workbook, `Reporte_Inventario_${new Date().toISOString().split('T')[0]}.xlsx`);
+                    const datosParaExcel = activos.map(a => ({
+                        "Nº Acta": a.numeroActaAux, "Fecha de Registro": a.fechaHoraRegistro,
+                        "Ciudad": a.ciudadContexto, "Gerencia": a.gerenciaContexto,
+                        "C.I.": a.ci, "Custodio": a.nombre, "Cargo": `${a.cargo} - ${a.cargoEspecifico}`,
+                        "Oficina": a.ubicacionFuncionario, "Código": a.codigoActivo || 'S/C',
+                        "Descripción": a.descripcionActivo, "Ubicación Hallada": a.ubicacionActivo, 
+                        "Riesgo": a.descripcionRiesgo,
+                        "Enlace Foto Activo": a.fotoActivoFinal,
+                        "Enlace Foto Plaqueta": a.fotoCodigoFinal
+                    }));
+
+                    const worksheet = XLSX.utils.json_to_sheet(datosParaExcel);
+                    const workbook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventario");
+                    XLSX.writeFile(workbook, `Reporte_Inventario_${new Date().toISOString().split('T')[0]}.xlsx`);
+                } catch (error) {
+                    console.error("Error al exportar:", error);
+                    alert("Ocurrió un error al intentar crear el archivo Excel. Verifica los permisos de tu navegador.");
+                }
             };
 
             const activosFiltrados = activos.filter(a => {
@@ -296,7 +350,7 @@
                                 <img src={LOGO_URL} alt="Logo" className="h-14 w-14 rounded-full object-cover border-2 border-slate-100 dark:border-slate-600 shadow-sm" />
                                 <div>
                                     <h1 className="text-xl md:text-2xl font-bold leading-tight">Auditoría de Activos</h1>
-                                    <p className="text-slate-500 dark:text-slate-400 text-xs">V7 • Nube de Fotos Automática</p>
+                                    <p className="text-slate-500 dark:text-slate-400 text-xs">V8 • Edición Activa y Cloud</p>
                                 </div>
                             </div>
                             
@@ -328,30 +382,37 @@
                                             <label className="block text-[10px] font-semibold text-slate-300 mb-1">GERENCIA / ÁREA</label>
                                             <input type="text" name="gerencia" value={contextoSesion.gerencia} onChange={handleContextoChange} className="w-full px-3 py-1.5 bg-slate-700 dark:bg-slate-800 border border-slate-600 text-white rounded-md text-sm outline-none" />
                                         </div>
-                                        {/* NUEVO CAMPO PARA API DE IMGBB */}
                                         <div className="col-span-2 mt-2 pt-3 border-t border-slate-600">
                                             <label className="block text-[10px] font-semibold text-slate-300 mb-1 uppercase">Clave API de ImgBB (Para subir fotos a la nube)</label>
                                             <input type="password" name="imgbbKey" value={contextoSesion.imgbbKey} onChange={handleContextoChange} className="w-full px-3 py-1.5 bg-slate-700 dark:bg-slate-800 border border-slate-600 text-white rounded-md text-sm outline-none font-mono" placeholder="Pega tu API Key de ImgBB aquí..." />
-                                            <p className="text-[9px] text-slate-400 mt-1">Consíguela gratis registrándote en <a href="https://api.imgbb.com/" target="_blank" className="text-blue-400 underline">api.imgbb.com</a></p>
                                         </div>
                                     </div>
                                 </div>
 
-                                <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 md:p-6 transition-colors">
-                                    <div className="mb-6">
-                                        <h2 className="text-sm font-bold mb-3 pb-2 border-b border-slate-100 dark:border-slate-700 flex items-center gap-2"><i className="fa-solid fa-user text-blue-500"></i> 1. Custodio</h2>
-                                        <div className="space-y-3">
-                                            <div><input type="text" name="nombre" value={formData.nombre} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Nombre (Opcional)" /></div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <input type="text" name="ci" value={formData.ci} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="C.I." />
-                                                <input type="text" name="numeroActaAux" value={formData.numeroActaAux} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-600 rounded-md text-sm outline-none" placeholder="Acta (Auto)" />
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <input type="text" name="cargo" value={formData.cargo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Cargo" />
-                                                <input type="text" name="cargoEspecifico" value={formData.cargoEspecifico} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Específico" />
-                                            </div>
-                                            <input type="text" name="ubicacionFuncionario" value={formData.ubicacionFuncionario} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Oficina / Área" />
+                                <form onSubmit={handleSubmit} className={`rounded-xl shadow-sm border p-5 md:p-6 transition-colors ${editandoId ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-700/50' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+                                    {/* Título Condicional para Edición */}
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h2 className="text-sm font-bold flex items-center gap-2 uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                                            {editandoId ? <><i className="fa-solid fa-pen text-amber-500"></i> Modificando Acta: {formData.numeroActaAux}</> : <><i className="fa-solid fa-user text-blue-500"></i> 1. Custodio</>}
+                                        </h2>
+                                        {editandoId && (
+                                            <button type="button" onClick={cancelarEdicion} className="text-xs font-bold text-red-500 hover:text-red-700 underline">
+                                                Cancelar
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-3 mb-6">
+                                        <div><input type="text" name="nombre" value={formData.nombre} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Nombre (Opcional)" /></div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <input type="text" name="ci" value={formData.ci} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="C.I." />
+                                            <input type="text" name="numeroActaAux" value={formData.numeroActaAux} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-600 rounded-md text-sm outline-none" placeholder="Acta (Auto)" readOnly={!!editandoId} />
                                         </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <input type="text" name="cargo" value={formData.cargo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Cargo" />
+                                            <input type="text" name="cargoEspecifico" value={formData.cargoEspecifico} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Específico" />
+                                        </div>
+                                        <input type="text" name="ubicacionFuncionario" value={formData.ubicacionFuncionario} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Oficina / Área" />
                                     </div>
 
                                     <div>
@@ -373,20 +434,19 @@
                                                 <input type="text" name="codigoActivo" value={formData.codigoActivo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm font-mono uppercase outline-none" placeholder="Código Plaqueta (Opcional)" />
                                             </div>
                                             
-                                            {/* DOBLE FOTO */}
                                             <div className="col-span-1">
                                                 <button type="button" onClick={() => fileActivoRef.current.click()} className="w-full flex flex-col items-center gap-1 p-2 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-md text-xs font-medium transition-colors">
-                                                    <i className="fa-solid fa-camera text-blue-500"></i> {formData.fotoActivoNombre ? 'Cambiar Foto' : 'Foto Activo'}
+                                                    <i className="fa-solid fa-camera text-blue-500"></i> {formData.fotoActivoNombre || formData.fotoActivoUrl ? 'Cambiar Foto Activo' : 'Foto Activo'}
                                                 </button>
                                                 <input type="file" accept="image/*" className="hidden" ref={fileActivoRef} onChange={(e) => handlePhotoChange(e, 'activo')} capture="environment" />
-                                                {formData.fotoActivoNombre && <p className="text-[9px] text-emerald-600 dark:text-emerald-400 mt-1 truncate">✓ Capturada</p>}
+                                                {(formData.fotoActivoNombre || formData.fotoActivoUrl) && <p className="text-[9px] text-emerald-600 dark:text-emerald-400 mt-1 truncate">✓ Cargada</p>}
                                             </div>
                                             <div className="col-span-1">
                                                 <button type="button" onClick={() => fileCodigoRef.current.click()} className="w-full flex flex-col items-center gap-1 p-2 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-md text-xs font-medium transition-colors">
-                                                    <i className="fa-solid fa-barcode text-purple-500"></i> {formData.fotoCodigoNombre ? 'Cambiar Foto' : 'Foto Código'}
+                                                    <i className="fa-solid fa-barcode text-purple-500"></i> {formData.fotoCodigoNombre || formData.fotoCodigoUrl ? 'Cambiar Foto Plaqueta' : 'Foto Código'}
                                                 </button>
                                                 <input type="file" accept="image/*" className="hidden" ref={fileCodigoRef} onChange={(e) => handlePhotoChange(e, 'codigo')} capture="environment" />
-                                                {formData.fotoCodigoNombre && <p className="text-[9px] text-emerald-600 dark:text-emerald-400 mt-1 truncate">✓ Capturada</p>}
+                                                {(formData.fotoCodigoNombre || formData.fotoCodigoUrl) && <p className="text-[9px] text-emerald-600 dark:text-emerald-400 mt-1 truncate">✓ Cargada</p>}
                                             </div>
 
                                             <div className="col-span-2">
@@ -397,8 +457,8 @@
                                             </div>
                                         </div>
 
-                                        <button type="submit" disabled={guardando} className={`w-full mt-4 flex justify-center items-center gap-2 text-white px-4 py-4 rounded-lg text-sm font-black uppercase shadow-md ${guardando ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                                            {guardando ? <><i className="fa-solid fa-spinner fa-spin"></i> Guardando y Subiendo Fotos...</> : <><i className="fa-solid fa-cloud-arrow-up"></i> Guardar Registro</>}
+                                        <button type="submit" disabled={guardando} className={`w-full mt-4 flex justify-center items-center gap-2 text-white px-4 py-4 rounded-lg text-sm font-black uppercase shadow-md ${guardando ? 'bg-slate-400' : (editandoId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700')}`}>
+                                            {guardando ? <><i className="fa-solid fa-spinner fa-spin"></i> Guardando...</> : (editandoId ? <><i className="fa-solid fa-pen-to-square"></i> Actualizar Registro</> : <><i className="fa-solid fa-cloud-arrow-up"></i> Guardar Nuevo Registro</>)}
                                         </button>
                                     </div>
                                 </form>
@@ -435,15 +495,17 @@
 
                                             return (
                                                 <div key={activo.id} className={`rounded-xl border-l-[6px] shadow-sm p-4 bg-white dark:bg-slate-800 ${bordeRiesgo} relative group`}>
+                                                    {/* BOTONES FLOTANTES DE EDICIÓN Y BORRADO */}
                                                     <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                                                        <button onClick={() => eliminarActivo(activo.id, activo.numeroActaAux)} className="text-white bg-red-500 px-3 py-1.5 rounded-lg text-xs font-bold shadow-md"><i className="fa-solid fa-trash-can"></i></button>
+                                                        <button onClick={() => iniciarEdicion(activo)} className="text-white bg-blue-500 hover:bg-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold shadow-md" title="Editar Registro"><i className="fa-solid fa-pen"></i></button>
+                                                        <button onClick={() => eliminarActivo(activo.id, activo.numeroActaAux)} className="text-white bg-red-500 hover:bg-red-600 px-3 py-1.5 rounded-lg text-xs font-bold shadow-md" title="Eliminar Registro"><i className="fa-solid fa-trash-can"></i></button>
                                                     </div>
                                                     
-                                                    <div className="flex justify-between items-center mb-2 pr-12">
+                                                    <div className="flex justify-between items-center mb-2 pr-20">
                                                         <span className="bg-slate-800 dark:bg-slate-950 text-white px-2 py-1 rounded text-[10px] font-bold font-mono">{activo.numeroActaAux}</span>
                                                         <div className="flex gap-2">
-                                                            {activo.fotoActivoFinal && activo.fotoActivoFinal !== 'No' && activo.fotoActivoFinal !== 'Sí (Falta API)' && <a href={activo.fotoActivoFinal} target="_blank" className="text-blue-500 hover:text-blue-700" title="Ver Foto Activo en Nube"><i className="fa-solid fa-image"></i></a>}
-                                                            {activo.fotoCodigoFinal && activo.fotoCodigoFinal !== 'No' && activo.fotoCodigoFinal !== 'Sí (Falta API)' && <a href={activo.fotoCodigoFinal} target="_blank" className="text-purple-500 hover:text-purple-700" title="Ver Foto Plaqueta en Nube"><i className="fa-solid fa-barcode"></i></a>}
+                                                            {activo.fotoActivoFinal && activo.fotoActivoFinal !== 'No' && activo.fotoActivoFinal !== 'Sí (Falta API)' && activo.fotoActivoFinal !== 'Sí (Sin ImgBB)' && <a href={activo.fotoActivoFinal} target="_blank" className="text-blue-500 hover:text-blue-700" title="Ver Foto Activo en Nube"><i className="fa-solid fa-image"></i></a>}
+                                                            {activo.fotoCodigoFinal && activo.fotoCodigoFinal !== 'No' && activo.fotoCodigoFinal !== 'Sí (Falta API)' && activo.fotoCodigoFinal !== 'Sí (Sin ImgBB)' && <a href={activo.fotoCodigoFinal} target="_blank" className="text-purple-500 hover:text-purple-700" title="Ver Foto Plaqueta en Nube"><i className="fa-solid fa-barcode"></i></a>}
                                                         </div>
                                                     </div>
 
