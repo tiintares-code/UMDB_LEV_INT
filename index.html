@@ -18,8 +18,8 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Librería oficial de Excel (SheetJS) -->
-    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <!-- Librería avanzada de Excel (xlsx-js-style) para dar formato, colores y estilos -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
@@ -65,7 +65,6 @@
             const [contadorActas, setContadorActas] = useState(() => { const g = localStorage.getItem('app_contador'); return g ? parseInt(g) : 0; });
             const [empleadosRecientes, setEmpleadosRecientes] = useState(() => { const g = localStorage.getItem('app_empleados'); return g ? JSON.parse(g) : []; });
             
-            // ESTADO NUEVO: Para saber qué registro estamos editando
             const [editandoId, setEditandoId] = useState(null);
 
             const [contextoSesion, setContextoSesion] = useState(() => { 
@@ -85,7 +84,11 @@
             const itemsPorPagina = 10;
 
             const LOGO_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQzL0ANgclJcSvKlLJDjeHH-tpIbl9SHI9mXg&s";
-            const SHEETDB_URL = "https://script.google.com/macros/s/AKfycbxz1EgBePHm7B45uPMg4qlScdpjP2M3ar0tXgEtUjQVupT6seJCVDni6q8vmslT4RsnfQ/exec"; 
+            
+            // ==============================================================
+            // NUEVO: URL DE GOOGLE APPS SCRIPT
+            const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxz1EgBePHm7B45uPMg4qlScdpjP2M3ar0tXgEtUjQVupT6seJCVDni6q8vmslT4RsnfQ/exec"; 
+            // ==============================================================
 
             const estadoInicialFormulario = {
                 nombre: '', ci: '', cargo: '', cargoEspecifico: '', ubicacionFuncionario: '',
@@ -106,7 +109,8 @@
                 yellow: { bg: 'bg-yellow-50 dark:bg-yellow-900/20', border: 'border-yellow-500', text: 'text-yellow-600 dark:text-yellow-400', textDark: 'text-yellow-800 dark:text-yellow-300', ring: 'ring-yellow-500', bgLight: 'bg-yellow-100 dark:bg-yellow-900/40' },
                 purple: { bg: 'bg-purple-50 dark:bg-purple-900/20', border: 'border-purple-500', text: 'text-purple-600 dark:text-purple-400', textDark: 'text-purple-800 dark:text-purple-300', ring: 'ring-purple-500', bgLight: 'bg-purple-100 dark:bg-purple-900/40' },
                 blue: { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-500', text: 'text-blue-600 dark:text-blue-400', textDark: 'text-blue-800 dark:text-blue-300', ring: 'ring-blue-500', bgLight: 'bg-blue-100 dark:bg-blue-900/40' },
-                green: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-500', text: 'text-green-600 dark:text-green-400', textDark: 'text-green-800 dark:text-green-300', ring: 'ring-green-500', bgLight: 'bg-green-100 dark:bg-green-900/40' }
+                green: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-500', text: 'text-green-600 dark:text-green-400', textDark: 'text-green-800 dark:text-green-300', ring: 'ring-green-500', bgLight: 'bg-green-100 dark:bg-green-900/40' },
+                slate: { bg: 'bg-slate-100 dark:bg-slate-800', border: 'border-slate-500', text: 'text-slate-600 dark:text-slate-400', textDark: 'text-slate-800 dark:text-slate-300', ring: 'ring-slate-500', bgLight: 'bg-slate-200 dark:bg-slate-700' }
             };
 
             const opcionesRiesgo = [
@@ -115,7 +119,8 @@
                 { id: 'amarillo', color: 'yellow', titulo: 'Ubicación Incorrecta', iconClass: 'fa-solid fa-circle-question' },
                 { id: 'regional', color: 'purple', titulo: 'Activo Regional', iconClass: 'fa-solid fa-globe' },
                 { id: 'azul', color: 'blue', titulo: 'Obsoleto / Para Baja', iconClass: 'fa-solid fa-circle-info' },
-                { id: 'verde', color: 'green', titulo: 'Regular', iconClass: 'fa-solid fa-circle-check' },
+                { id: 'revision', color: 'slate', titulo: 'Revisión / Consultar', iconClass: 'fa-solid fa-magnifying-glass-chart' },
+                { id: 'verde', color: 'green', titulo: 'Regular', iconClass: 'fa-solid fa-circle-check' }
             ];
 
             const handleContextoChange = (e) => setContextoSesion({ ...contextoSesion, [e.target.name]: e.target.value });
@@ -149,7 +154,6 @@
                 setFormData({ ...formData, nombre: emp.nombre, ci: emp.ci, cargo: emp.cargo, cargoEspecifico: emp.cargoEspecifico, ubicacionFuncionario: emp.ubicacionFuncionario });
             };
 
-            // INICIAR EDICIÓN
             const iniciarEdicion = (activo) => {
                 setEditandoId(activo.id);
                 setFormData({
@@ -166,10 +170,9 @@
                     fotoActivoNombre: '', fotoActivoUrl: activo.fotoActivoFinal || '', fotoActivoFile: null, 
                     fotoCodigoNombre: '', fotoCodigoUrl: activo.fotoCodigoFinal || '', fotoCodigoFile: null
                 });
-                window.scrollTo({ top: 0, behavior: 'smooth' }); // Subir al formulario
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             };
 
-            // CANCELAR EDICIÓN
             const cancelarEdicion = () => {
                 setEditandoId(null);
                 setFormData(estadoInicialFormulario);
@@ -178,10 +181,8 @@
             const eliminarActivo = async (id, numeroActaAux) => {
                 if(!window.confirm(`¿Estás seguro de eliminar el registro ${numeroActaAux}?`)) return;
                 setActivos(activos.filter(a => a.id !== id));
-                if (SHEETDB_URL) {
-                    try { await fetch(`${SHEETDB_URL}/Acta/${numeroActaAux}`, { method: 'DELETE', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' } }); } 
-                    catch (error) { console.error("Error SheetDB:", error); }
-                }
+                // Eliminado de Sheets no soportado nativamente por Google Apps Script simple,
+                // la memoria local mandará en el Excel descargado.
             };
 
             const subirFotoImgBB = async (archivo, apiKey) => {
@@ -200,7 +201,6 @@
                 e.preventDefault();
                 setGuardando(true);
                 
-                // Mantener fotos existentes si se está editando y no se seleccionaron nuevas
                 let urlFotoActivo = formData.fotoActivoFile ? 'Procesando...' : (formData.fotoActivoUrl || 'No');
                 let urlFotoCodigo = formData.fotoCodigoFile ? 'Procesando...' : (formData.fotoCodigoUrl || 'No');
 
@@ -210,7 +210,7 @@
                         if (formData.fotoCodigoFile) urlFotoCodigo = await subirFotoImgBB(formData.fotoCodigoFile, contextoSesion.imgbbKey);
                     } catch (error) {
                         console.error("Error fotos:", error);
-                        alert("Error subiendo fotos a ImgBB. Revisa si tu API Key es correcta.");
+                        alert("Error subiendo fotos a ImgBB.");
                         urlFotoActivo = 'Sí (Fallo Subida)';
                         urlFotoCodigo = 'Sí (Fallo Subida)';
                     }
@@ -223,7 +223,6 @@
                 const numActaFinal = formData.numeroActaAux || `ACT-AUX-${String(contadorActas + 1).padStart(4, '0')}`;
                 const descripcionesRiesgo = formData.estadosRiesgo.map(id => opcionesRiesgo.find(o => o.id === id)?.titulo).join(' + ');
 
-                // Si estamos editando, mantenemos el ID original y la fecha original
                 const activoEditadoExistente = editandoId ? activos.find(a => a.id === editandoId) : null;
 
                 const nuevoActivo = {
@@ -236,41 +235,39 @@
                     gerenciaContexto: contextoSesion.gerencia,
                     fotoActivoFinal: urlFotoActivo, 
                     fotoCodigoFinal: urlFotoCodigo,
-                    estadosRiesgo: formData.estadosRiesgo // Importante para recuperar estados al editar
+                    estadosRiesgo: formData.estadosRiesgo 
                 };
 
-                if (SHEETDB_URL) {
+                // Enviar datos a Google Apps Script
+                if (GOOGLE_SCRIPT_URL && GOOGLE_SCRIPT_URL !== "TU_URL_DE_APPS_SCRIPT_AQUI") {
                     try {
-                        const rowData = {
-                            "Acta": nuevoActivo.numeroActaAux, "Fecha": nuevoActivo.fechaHoraRegistro,
-                            "Ciudad": nuevoActivo.ciudadContexto, "Gerencia": nuevoActivo.gerenciaContexto,
-                            "CI": nuevoActivo.ci, "Nombre": nuevoActivo.nombre,
+                        const payload = {
+                            "Acta": nuevoActivo.numeroActaAux + (editandoId ? " (EDITADO)" : ""),
+                            "Fecha": nuevoActivo.fechaHoraRegistro,
+                            "Ciudad": nuevoActivo.ciudadContexto,
+                            "Gerencia": nuevoActivo.gerenciaContexto,
+                            "CI": nuevoActivo.ci,
+                            "Nombre": nuevoActivo.nombre,
                             "Cargo": `${nuevoActivo.cargo} - ${nuevoActivo.cargoEspecifico}`,
                             "Ubicacion_Resp": nuevoActivo.ubicacionFuncionario,
                             "Codigo": nuevoActivo.codigoActivo || 'S/C',
                             "Descripcion_Activo": nuevoActivo.descripcionActivo,
-                            "Ubicacion_Activo": nuevoActivo.ubicacionActivo, "Riesgo": nuevoActivo.descripcionRiesgo,
+                            "Ubicacion_Activo": nuevoActivo.ubicacionActivo,
+                            "Riesgo": nuevoActivo.descripcionRiesgo,
                             "Foto_Activo": nuevoActivo.fotoActivoFinal,
-                            "Foto_Plaqueta": nuevoActivo.fotoCodigoFinal
+                            "Foto_Codigo": nuevoActivo.fotoCodigoFinal
                         };
 
-                        if (editandoId) {
-                            // Método PUT para editar en SheetDB (Busca por Acta)
-                            const respuesta = await fetch(`${SHEETDB_URL}/Acta/${numActaFinal}`, {
-                                method: 'PUT', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ data: [rowData] })
-                            });
-                            if (!respuesta.ok) throw new Error("Fallo al actualizar en la nube");
-                        } else {
-                            // Método POST para nuevo registro
-                            const respuesta = await fetch(SHEETDB_URL, {
-                                method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ data: [rowData] })
-                            });
-                            if (!respuesta.ok) throw new Error("Fallo al guardar en la nube");
-                        }
+                        await fetch(GOOGLE_SCRIPT_URL, {
+                            method: 'POST',
+                            mode: 'no-cors', // Evita el error de CORS en el navegador
+                            headers: { 'Content-Type': 'text/plain' },
+                            body: JSON.stringify(payload)
+                        });
+                        // Como usamos no-cors, asumimos éxito si no lanza error de red.
                     } catch (error) {
-                        alert("Guardado localmente, pero falló la conexión con Sheets.");
+                        console.error(error);
+                        alert("Guardado localmente, pero falló la red hacia Sheets.");
                     }
                 }
 
@@ -299,27 +296,52 @@
                 try {
                     if (activos.length === 0) return alert("No hay datos para exportar.");
                     if (typeof XLSX === 'undefined') {
-                        return alert("La librería de Excel aún no ha cargado o está bloqueada por tu red. Intenta refrescar la página.");
+                        return alert("Cargando herramientas de Excel... por favor espera un segundo y vuelve a intentar.");
                     }
 
                     const datosParaExcel = activos.map(a => ({
                         "Nº Acta": a.numeroActaAux, "Fecha de Registro": a.fechaHoraRegistro,
-                        "Ciudad": a.ciudadContexto, "Gerencia": a.gerenciaContexto,
-                        "C.I.": a.ci, "Custodio": a.nombre, "Cargo": `${a.cargo} - ${a.cargoEspecifico}`,
-                        "Oficina": a.ubicacionFuncionario, "Código": a.codigoActivo || 'S/C',
-                        "Descripción": a.descripcionActivo, "Ubicación Hallada": a.ubicacionActivo, 
-                        "Riesgo": a.descripcionRiesgo,
-                        "Enlace Foto Activo": a.fotoActivoFinal,
-                        "Enlace Foto Plaqueta": a.fotoCodigoFinal
+                        "Ciudad": a.ciudadContexto, "Gerencia/Área": a.gerenciaContexto,
+                        "C.I. Custodio": a.ci, "Nombre Custodio": a.nombre, "Cargo Completo": `${a.cargo} - ${a.cargoEspecifico}`,
+                        "Oficina Custodio": a.ubicacionFuncionario, "CÓDIGO": a.codigoActivo || 'S/C',
+                        "Descripción del Activo": a.descripcionActivo, "Ubicación Hallada": a.ubicacionActivo, 
+                        "Clasificación / Riesgo": a.descripcionRiesgo,
+                        "Enlace Foto Activo": a.fotoActivoFinal, "Enlace Foto Código": a.fotoCodigoFinal
                     }));
 
                     const worksheet = XLSX.utils.json_to_sheet(datosParaExcel);
+                    
+                    // ESTILOS AVANZADOS PARA EXCEL
+                    const rango = XLSX.utils.decode_range(worksheet['!ref']);
+                    
+                    // 1. Aplicar estilo al encabezado (Primera fila)
+                    for (let C = rango.s.c; C <= rango.e.c; ++C) {
+                        const celda = XLSX.utils.encode_col(C) + "1";
+                        if (!worksheet[celda]) continue;
+                        worksheet[celda].s = {
+                            fill: { fgColor: { rgb: "1E3A8A" } }, // Azul oscuro
+                            font: { color: { rgb: "FFFFFF" }, bold: true }, // Letra blanca y negrita
+                            alignment: { horizontal: "center", vertical: "center" }
+                        };
+                    }
+
+                    // 2. Activar Autofiltros
+                    worksheet['!autofilter'] = { ref: worksheet['!ref'] };
+
+                    // 3. Ajustar el ancho de las columnas
+                    worksheet['!cols'] = [
+                        { wch: 15 }, { wch: 22 }, { wch: 15 }, { wch: 20 },
+                        { wch: 15 }, { wch: 30 }, { wch: 25 }, { wch: 20 },
+                        { wch: 20 }, { wch: 45 }, { wch: 25 }, { wch: 35 },
+                        { wch: 20 }, { wch: 20 }
+                    ];
+
                     const workbook = XLSX.utils.book_new();
                     XLSX.utils.book_append_sheet(workbook, worksheet, "Inventario");
                     XLSX.writeFile(workbook, `Reporte_Inventario_${new Date().toISOString().split('T')[0]}.xlsx`);
                 } catch (error) {
                     console.error("Error al exportar:", error);
-                    alert("Ocurrió un error al intentar crear el archivo Excel. Verifica los permisos de tu navegador.");
+                    alert("Error generando Excel. Asegúrate de tener conexión para descargar la librería.");
                 }
             };
 
@@ -350,7 +372,7 @@
                                 <img src={LOGO_URL} alt="Logo" className="h-14 w-14 rounded-full object-cover border-2 border-slate-100 dark:border-slate-600 shadow-sm" />
                                 <div>
                                     <h1 className="text-xl md:text-2xl font-bold leading-tight">Auditoría de Activos</h1>
-                                    <p className="text-slate-500 dark:text-slate-400 text-xs">V8 • Edición Activa y Cloud</p>
+                                    <p className="text-slate-500 dark:text-slate-400 text-xs">V9 • Edición + Excel Pro</p>
                                 </div>
                             </div>
                             
@@ -383,20 +405,19 @@
                                             <input type="text" name="gerencia" value={contextoSesion.gerencia} onChange={handleContextoChange} className="w-full px-3 py-1.5 bg-slate-700 dark:bg-slate-800 border border-slate-600 text-white rounded-md text-sm outline-none" />
                                         </div>
                                         <div className="col-span-2 mt-2 pt-3 border-t border-slate-600">
-                                            <label className="block text-[10px] font-semibold text-slate-300 mb-1 uppercase">Clave API de ImgBB (Para subir fotos a la nube)</label>
+                                            <label className="block text-[10px] font-semibold text-slate-300 mb-1 uppercase">Clave API de ImgBB (Fotos a la nube)</label>
                                             <input type="password" name="imgbbKey" value={contextoSesion.imgbbKey} onChange={handleContextoChange} className="w-full px-3 py-1.5 bg-slate-700 dark:bg-slate-800 border border-slate-600 text-white rounded-md text-sm outline-none font-mono" placeholder="Pega tu API Key de ImgBB aquí..." />
                                         </div>
                                     </div>
                                 </div>
 
                                 <form onSubmit={handleSubmit} className={`rounded-xl shadow-sm border p-5 md:p-6 transition-colors ${editandoId ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-700/50' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
-                                    {/* Título Condicional para Edición */}
                                     <div className="flex justify-between items-center mb-6">
                                         <h2 className="text-sm font-bold flex items-center gap-2 uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                                            {editandoId ? <><i className="fa-solid fa-pen text-amber-500"></i> Modificando Acta: {formData.numeroActaAux}</> : <><i className="fa-solid fa-user text-blue-500"></i> 1. Custodio</>}
+                                            {editandoId ? <><i className="fa-solid fa-pen text-amber-500"></i> Modificando: {formData.numeroActaAux}</> : <><i className="fa-solid fa-user text-blue-500"></i> 1. Custodio</>}
                                         </h2>
                                         {editandoId && (
-                                            <button type="button" onClick={cancelarEdicion} className="text-xs font-bold text-red-500 hover:text-red-700 underline">
+                                            <button type="button" onClick={cancelarEdicion} className="text-xs font-bold text-red-500 hover:text-red-700 underline bg-white/50 px-2 py-1 rounded">
                                                 Cancelar
                                             </button>
                                         )}
@@ -406,7 +427,7 @@
                                         <div><input type="text" name="nombre" value={formData.nombre} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Nombre (Opcional)" /></div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <input type="text" name="ci" value={formData.ci} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="C.I." />
-                                            <input type="text" name="numeroActaAux" value={formData.numeroActaAux} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-600 rounded-md text-sm outline-none" placeholder="Acta (Auto)" readOnly={!!editandoId} />
+                                            <input type="text" name="numeroActaAux" value={formData.numeroActaAux} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-600 rounded-md text-sm outline-none font-bold" placeholder="Acta (Auto)" readOnly={!!editandoId} />
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <input type="text" name="cargo" value={formData.cargo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm outline-none" placeholder="Cargo" />
@@ -431,7 +452,8 @@
 
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="col-span-2">
-                                                <input type="text" name="codigoActivo" value={formData.codigoActivo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm font-mono uppercase outline-none" placeholder="Código Plaqueta (Opcional)" />
+                                                <label className="block text-xs font-bold text-slate-500 mb-1">CÓDIGO (Opcional)</label>
+                                                <input type="text" name="codigoActivo" value={formData.codigoActivo} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md text-sm font-mono uppercase outline-none" placeholder="Ej. AF-12345" />
                                             </div>
                                             
                                             <div className="col-span-1">
@@ -443,7 +465,7 @@
                                             </div>
                                             <div className="col-span-1">
                                                 <button type="button" onClick={() => fileCodigoRef.current.click()} className="w-full flex flex-col items-center gap-1 p-2 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-md text-xs font-medium transition-colors">
-                                                    <i className="fa-solid fa-barcode text-purple-500"></i> {formData.fotoCodigoNombre || formData.fotoCodigoUrl ? 'Cambiar Foto Plaqueta' : 'Foto Código'}
+                                                    <i className="fa-solid fa-barcode text-purple-500"></i> {formData.fotoCodigoNombre || formData.fotoCodigoUrl ? 'Cambiar Foto Código' : 'Foto CÓDIGO'}
                                                 </button>
                                                 <input type="file" accept="image/*" className="hidden" ref={fileCodigoRef} onChange={(e) => handlePhotoChange(e, 'codigo')} capture="environment" />
                                                 {(formData.fotoCodigoNombre || formData.fotoCodigoUrl) && <p className="text-[9px] text-emerald-600 dark:text-emerald-400 mt-1 truncate">✓ Cargada</p>}
@@ -458,7 +480,7 @@
                                         </div>
 
                                         <button type="submit" disabled={guardando} className={`w-full mt-4 flex justify-center items-center gap-2 text-white px-4 py-4 rounded-lg text-sm font-black uppercase shadow-md ${guardando ? 'bg-slate-400' : (editandoId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700')}`}>
-                                            {guardando ? <><i className="fa-solid fa-spinner fa-spin"></i> Guardando...</> : (editandoId ? <><i className="fa-solid fa-pen-to-square"></i> Actualizar Registro</> : <><i className="fa-solid fa-cloud-arrow-up"></i> Guardar Nuevo Registro</>)}
+                                            {guardando ? <><i className="fa-solid fa-spinner fa-spin"></i> Procesando...</> : (editandoId ? <><i className="fa-solid fa-pen-to-square"></i> Actualizar Registro</> : <><i className="fa-solid fa-cloud-arrow-up"></i> Guardar Nuevo Registro</>)}
                                         </button>
                                     </div>
                                 </form>
@@ -495,7 +517,8 @@
 
                                             return (
                                                 <div key={activo.id} className={`rounded-xl border-l-[6px] shadow-sm p-4 bg-white dark:bg-slate-800 ${bordeRiesgo} relative group`}>
-                                                    {/* BOTONES FLOTANTES DE EDICIÓN Y BORRADO */}
+                                                    
+                                                    {/* BOTONES FLOTANTES (EDITAR Y BORRAR) */}
                                                     <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
                                                         <button onClick={() => iniciarEdicion(activo)} className="text-white bg-blue-500 hover:bg-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold shadow-md" title="Editar Registro"><i className="fa-solid fa-pen"></i></button>
                                                         <button onClick={() => eliminarActivo(activo.id, activo.numeroActaAux)} className="text-white bg-red-500 hover:bg-red-600 px-3 py-1.5 rounded-lg text-xs font-bold shadow-md" title="Eliminar Registro"><i className="fa-solid fa-trash-can"></i></button>
@@ -504,8 +527,8 @@
                                                     <div className="flex justify-between items-center mb-2 pr-20">
                                                         <span className="bg-slate-800 dark:bg-slate-950 text-white px-2 py-1 rounded text-[10px] font-bold font-mono">{activo.numeroActaAux}</span>
                                                         <div className="flex gap-2">
-                                                            {activo.fotoActivoFinal && activo.fotoActivoFinal !== 'No' && activo.fotoActivoFinal !== 'Sí (Falta API)' && activo.fotoActivoFinal !== 'Sí (Sin ImgBB)' && <a href={activo.fotoActivoFinal} target="_blank" className="text-blue-500 hover:text-blue-700" title="Ver Foto Activo en Nube"><i className="fa-solid fa-image"></i></a>}
-                                                            {activo.fotoCodigoFinal && activo.fotoCodigoFinal !== 'No' && activo.fotoCodigoFinal !== 'Sí (Falta API)' && activo.fotoCodigoFinal !== 'Sí (Sin ImgBB)' && <a href={activo.fotoCodigoFinal} target="_blank" className="text-purple-500 hover:text-purple-700" title="Ver Foto Plaqueta en Nube"><i className="fa-solid fa-barcode"></i></a>}
+                                                            {activo.fotoActivoFinal && activo.fotoActivoFinal !== 'No' && !activo.fotoActivoFinal.includes('Fallo') && !activo.fotoActivoFinal.includes('Sin ImgBB') && <a href={activo.fotoActivoFinal} target="_blank" className="text-blue-500 hover:text-blue-700" title="Ver Foto Activo"><i className="fa-solid fa-image"></i></a>}
+                                                            {activo.fotoCodigoFinal && activo.fotoCodigoFinal !== 'No' && !activo.fotoCodigoFinal.includes('Fallo') && !activo.fotoCodigoFinal.includes('Sin ImgBB') && <a href={activo.fotoCodigoFinal} target="_blank" className="text-purple-500 hover:text-purple-700" title="Ver Foto Código"><i className="fa-solid fa-barcode"></i></a>}
                                                         </div>
                                                     </div>
 
