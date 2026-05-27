@@ -18,7 +18,7 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Librería avanzada de Excel (xlsx-js-style) para dar formato, colores y estilos -->
+    <!-- Librería EXCLUSIVA para Excel con estilos (Colores, Bordes, Filtros) -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 
     <style>
@@ -85,11 +85,6 @@
 
             const LOGO_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQzL0ANgclJcSvKlLJDjeHH-tpIbl9SHI9mXg&s";
             
-            // ==============================================================
-            // NUEVO: URL DE GOOGLE APPS SCRIPT
-            const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxz1EgBePHm7B45uPMg4qlScdpjP2M3ar0tXgEtUjQVupT6seJCVDni6q8vmslT4RsnfQ/exec"; 
-            // ==============================================================
-
             const estadoInicialFormulario = {
                 nombre: '', ci: '', cargo: '', cargoEspecifico: '', ubicacionFuncionario: '',
                 numeroActaAux: '', estadosRiesgo: ['verde'], codigoActivo: '',
@@ -181,8 +176,6 @@
             const eliminarActivo = async (id, numeroActaAux) => {
                 if(!window.confirm(`¿Estás seguro de eliminar el registro ${numeroActaAux}?`)) return;
                 setActivos(activos.filter(a => a.id !== id));
-                // Eliminado de Sheets no soportado nativamente por Google Apps Script simple,
-                // la memoria local mandará en el Excel descargado.
             };
 
             const subirFotoImgBB = async (archivo, apiKey) => {
@@ -238,39 +231,6 @@
                     estadosRiesgo: formData.estadosRiesgo 
                 };
 
-                // Enviar datos a Google Apps Script
-                if (GOOGLE_SCRIPT_URL && GOOGLE_SCRIPT_URL !== "TU_URL_DE_APPS_SCRIPT_AQUI") {
-                    try {
-                        const payload = {
-                            "Acta": nuevoActivo.numeroActaAux + (editandoId ? " (EDITADO)" : ""),
-                            "Fecha": nuevoActivo.fechaHoraRegistro,
-                            "Ciudad": nuevoActivo.ciudadContexto,
-                            "Gerencia": nuevoActivo.gerenciaContexto,
-                            "CI": nuevoActivo.ci,
-                            "Nombre": nuevoActivo.nombre,
-                            "Cargo": `${nuevoActivo.cargo} - ${nuevoActivo.cargoEspecifico}`,
-                            "Ubicacion_Resp": nuevoActivo.ubicacionFuncionario,
-                            "Codigo": nuevoActivo.codigoActivo || 'S/C',
-                            "Descripcion_Activo": nuevoActivo.descripcionActivo,
-                            "Ubicacion_Activo": nuevoActivo.ubicacionActivo,
-                            "Riesgo": nuevoActivo.descripcionRiesgo,
-                            "Foto_Activo": nuevoActivo.fotoActivoFinal,
-                            "Foto_Codigo": nuevoActivo.fotoCodigoFinal
-                        };
-
-                        await fetch(GOOGLE_SCRIPT_URL, {
-                            method: 'POST',
-                            mode: 'no-cors', // Evita el error de CORS en el navegador
-                            headers: { 'Content-Type': 'text/plain' },
-                            body: JSON.stringify(payload)
-                        });
-                        // Como usamos no-cors, asumimos éxito si no lanza error de red.
-                    } catch (error) {
-                        console.error(error);
-                        alert("Guardado localmente, pero falló la red hacia Sheets.");
-                    }
-                }
-
                 if (editandoId) {
                     setActivos(activos.map(a => a.id === editandoId ? nuevoActivo : a));
                     setEditandoId(null);
@@ -321,19 +281,41 @@
                         worksheet[celda].s = {
                             fill: { fgColor: { rgb: "1E3A8A" } }, // Azul oscuro
                             font: { color: { rgb: "FFFFFF" }, bold: true }, // Letra blanca y negrita
-                            alignment: { horizontal: "center", vertical: "center" }
+                            alignment: { horizontal: "center", vertical: "center" },
+                            border: {
+                                top: { style: "thin", color: { auto: 1 } },
+                                bottom: { style: "thin", color: { auto: 1 } },
+                                left: { style: "thin", color: { auto: 1 } },
+                                right: { style: "thin", color: { auto: 1 } }
+                            }
                         };
                     }
 
-                    // 2. Activar Autofiltros
+                    // 2. Aplicar bordes al resto de las celdas
+                    for (let R = rango.s.r + 1; R <= rango.e.r; ++R) {
+                        for (let C = rango.s.c; C <= rango.e.c; ++C) {
+                            const celda = XLSX.utils.encode_col(C) + (R + 1);
+                            if (!worksheet[celda]) continue;
+                            worksheet[celda].s = {
+                                border: {
+                                    top: { style: "thin", color: { auto: 1 } },
+                                    bottom: { style: "thin", color: { auto: 1 } },
+                                    left: { style: "thin", color: { auto: 1 } },
+                                    right: { style: "thin", color: { auto: 1 } }
+                                }
+                            };
+                        }
+                    }
+
+                    // 3. Activar Autofiltros
                     worksheet['!autofilter'] = { ref: worksheet['!ref'] };
 
-                    // 3. Ajustar el ancho de las columnas
+                    // 4. Ajustar el ancho de las columnas
                     worksheet['!cols'] = [
                         { wch: 15 }, { wch: 22 }, { wch: 15 }, { wch: 20 },
                         { wch: 15 }, { wch: 30 }, { wch: 25 }, { wch: 20 },
                         { wch: 20 }, { wch: 45 }, { wch: 25 }, { wch: 35 },
-                        { wch: 20 }, { wch: 20 }
+                        { wch: 40 }, { wch: 40 }
                     ];
 
                     const workbook = XLSX.utils.book_new();
@@ -372,7 +354,7 @@
                                 <img src={LOGO_URL} alt="Logo" className="h-14 w-14 rounded-full object-cover border-2 border-slate-100 dark:border-slate-600 shadow-sm" />
                                 <div>
                                     <h1 className="text-xl md:text-2xl font-bold leading-tight">Auditoría de Activos</h1>
-                                    <p className="text-slate-500 dark:text-slate-400 text-xs">V9 • Edición + Excel Pro</p>
+                                    <p className="text-slate-500 dark:text-slate-400 text-xs">V10 • Offline First + Excel Pro</p>
                                 </div>
                             </div>
                             
